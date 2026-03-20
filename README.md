@@ -2,7 +2,7 @@
 
 Enterprise-grade Relational Database Intelligence Agent for hackathon execution.
 
-This application analyzes multi-table relational data from SQLite, CSV bundles, or direct enterprise DB connections and automatically generates:
+This application analyzes multi-table relational data from SQLite databases or CSV bundles and automatically generates:
 
 - Schema understanding (tables, columns, candidate keys)
 - Relationship mapping and ER structure
@@ -25,7 +25,6 @@ This application analyzes multi-table relational data from SQLite, CSV bundles, 
 
 - SQLite upload (`.db`, `.sqlite`, `.sqlite3`)
 - Multi-table CSV bundle upload
-- Direct database connections: MySQL, PostgreSQL, SQL Server
 
 1. Schema Intelligence
 
@@ -67,7 +66,6 @@ This application analyzes multi-table relational data from SQLite, CSV bundles, 
 - PyVis (interactive ER graph)
 - SQLite (`sqlite3` standard library)
 - Requests (for Ollama integration)
-- SQLAlchemy (for direct DB connectivity)
 
 ## Setup
 
@@ -82,90 +80,6 @@ pip install -r requirements.txt
 ```bash
 streamlit run app.py
 ```
-
-## Full CLI Access
-
-All core features are available via terminal using `nexus_cli.py`:
-
-1. List Ollama models
-
-```bash
-python nexus_cli.py models
-```
-
-1. Analyze CSV bundle and export all artifacts
-
-```bash
-python nexus_cli.py analyze --source csv --csv data/customers.csv data/orders.csv data/payments.csv --out-dir outputs/cli_run --ai-brief --commit-audit --actor TeamName
-```
-
-1. Analyze SQLite database
-
-```bash
-python nexus_cli.py analyze --source sqlite --sqlite data/olist.db --out-dir outputs/sqlite_run --ai-brief
-```
-
-1. Analyze enterprise DB directly (MySQL/PostgreSQL/SQL Server)
-
-```bash
-python nexus_cli.py analyze --source db --db-type mysql --host localhost --port 3306 --database mydb --username root --password secret --out-dir outputs/mysql_run --ai-brief
-```
-
-For SQL Server, set `--db-type sqlserver` and use ODBC driver if needed:
-
-```bash
-python nexus_cli.py analyze --source db --db-type sqlserver --host localhost --port 1433 --database mydb --username sa --password secret --driver "ODBC Driver 17 for SQL Server" --out-dir outputs/sqlserver_run
-```
-
-CLI exports include:
-
-- `nexus_analysis.json`
-- `data_dictionary.csv`
-- `relationships.csv`
-- `quality_report.csv`
-- `er_diagram.mmd`
-- `er_graph.html`
-- `ai_brief.txt` (when `--ai-brief` is used)
-
-For load testing limits:
-
-```bash
-python benchmark_limits.py --rows 300000 --limit 25000
-```
-
-## Generate Validation Datasets (with intentional issues)
-
-Create clean and broken datasets to verify if the platform catches problems:
-
-```bash
-python generate_test_datasets.py --out outputs/test_scenarios --rows 60000
-```
-
-Generated scenarios:
-
-- `clean_bundle`: mostly healthy relational data
-- `quality_issues_bundle`: high nulls, duplicates, mixed data types, stale timestamps
-- `schema_issues_bundle`: orphan references, noisy/unlinked table, key mismatch patterns
-- `sqlite_demo/enterprise_demo.db`: SQLite relational DB for DB-file ingestion testing
-
-## Score and ER Diagram Meaning
-
-In the frontend, open **"How scoring works (read this first)"** for details.
-
-- Data Quality Score formula: `45% completeness + 35% consistency + 20% freshness`
-- Relationship Confidence:
-	- `1.0` for explicit foreign keys from metadata
-	- inferred confidence for overlap-based key matching
-- ER Diagram:
-	- node size represents relative volume
-	- node color represents quality band
-	- edges represent candidate or explicit relationships
-
-## Enterprise Connector Testing Notes
-
-- MySQL: requires `pymysql`
-- PostgreSQL: requires `psycopg2-binary`
-- SQL Server: requires `pyodbc` + compatible ODBC driver installed
 
 ## Optional: Local AI Copilot (Free)
 

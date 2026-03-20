@@ -1,17 +1,2 @@
-# Python
-.venv/
-__pycache__/
-*.pyc
-
-# Local outputs and temp artifacts
 outputs/
 testing/
-lib/
-
-# Keep reference code out of commits
-reference-projects/
-
-# OS/editor
-.DS_Store
-Thumbs.db
-.vscode/

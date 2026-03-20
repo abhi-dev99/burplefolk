@@ -3,4 +3,3 @@ numpy
 streamlit
 pyvis
 requests
-sqlalchemy
