@@ -1,8 +1,69 @@
 import json
 import re
+import time
 from typing import Dict, List, Tuple
 
 import requests
+
+
+def _normalize_gemini_model(model: str) -> str:
+    normalized = (model or "").strip()
+    return normalized or "gemini-2.0-flash"
+
+
+def _list_gemini_models(api_key: str, timeout_seconds: int = 10) -> List[str]:
+    if not api_key.strip():
+        return []
+    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key.strip()}"
+    try:
+        response = requests.get(url, timeout=timeout_seconds)
+        response.raise_for_status()
+        payload = response.json() if response.content else {}
+        raw_models = payload.get("models", []) if isinstance(payload, dict) else []
+        model_names: List[str] = []
+        for item in raw_models:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name", "")).strip()
+            if not name:
+                continue
+            if name.startswith("models/"):
+                name = name.split("models/", 1)[1]
+            model_names.append(name)
+        return sorted(set(model_names))
+    except Exception:
+        return []
+
+
+def _extract_gemini_error_message(response: requests.Response) -> str:
+    try:
+        payload = response.json() if response.content else {}
+        error = payload.get("error", {}) if isinstance(payload, dict) else {}
+        message = str(error.get("message", "")).strip()
+        status = str(error.get("status", "")).strip()
+        detail = f"{status}: {message}".strip(": ")
+        if detail:
+            return detail
+    except Exception:
+        pass
+
+    text = (response.text or "").strip()
+    if text:
+        return text[:400]
+    return f"HTTP {response.status_code}"
+
+
+def _candidate_gemini_models(selected_model: str, api_key: str, timeout_seconds: int) -> List[str]:
+    available = _list_gemini_models(api_key, timeout_seconds=timeout_seconds)
+    if not available:
+        return [selected_model]
+
+    preferred = [selected_model, "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b"]
+    ordered: List[str] = []
+    for model in preferred + available:
+        if model in available and model not in ordered:
+            ordered.append(model)
+    return ordered or [selected_model]
 
 
 def ollama_get_models(endpoint: str) -> List[str]:
@@ -60,19 +121,33 @@ def test_ollama_connection(endpoint: str, timeout_seconds: int = 8) -> Tuple[boo
         return False, f"Ollama connection failed: {exc}", []
 
 
-def test_gemini_connection(api_key: str, model: str = "gemini-1.5-flash", timeout_seconds: int = 12) -> Tuple[bool, str]:
+def test_gemini_connection(api_key: str, model: str = "gemini-2.0-flash", timeout_seconds: int = 12) -> Tuple[bool, str]:
     if not api_key.strip():
         return False, "Gemini API key is required."
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key.strip()}"
-    payload = {
-        "contents": [{"parts": [{"text": "Reply with only: OK"}]}],
-        "generationConfig": {"temperature": 0},
-    }
+    selected_model = _normalize_gemini_model(model)
+
+    # Connectivity check should avoid generation requests so it does not consume model quotas.
+    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key.strip()}"
     try:
-        response = requests.post(url, json=payload, timeout=timeout_seconds)
+        response = requests.get(url, timeout=timeout_seconds)
+        if response.status_code == 429:
+            return (
+                False,
+                f"Gemini rate limit/quota exceeded (429). {_extract_gemini_error_message(response)}",
+            )
+        if response.status_code >= 400:
+            return False, f"Gemini connection failed: {_extract_gemini_error_message(response)}"
+
         response.raise_for_status()
-        return True, f"Connected to Gemini model '{model}'."
+        available = _list_gemini_models(api_key, timeout_seconds=timeout_seconds)
+        if available and selected_model not in available:
+            sample = ", ".join(available[:8])
+            return (
+                True,
+                f"Gemini key is valid, but model '{selected_model}' is not listed for this key. Available models: {sample}",
+            )
+        return True, f"Connected to Gemini API. Model selected: '{selected_model}'."
     except requests.Timeout:
         return False, f"Gemini connection timed out after {timeout_seconds}s."
     except Exception as exc:
@@ -113,28 +188,60 @@ def _generate_gemini_brief(analysis: Dict, model: str, api_key: str, timeout_sec
         raise RuntimeError("Gemini API key is required for Gemini provider.")
 
     prompt = _build_ai_brief_prompt(analysis)
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key.strip()}"
+    selected_model = _normalize_gemini_model(model)
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {"temperature": 0.2},
     }
 
-    try:
-        response = requests.post(url, json=payload, timeout=timeout_seconds)
-    except requests.Timeout as exc:
-        raise RuntimeError(f"Gemini request timed out after {timeout_seconds}s.") from exc
+    attempted: List[str] = []
+    candidate_models = _candidate_gemini_models(selected_model, api_key, timeout_seconds=min(timeout_seconds, 12))
 
-    response.raise_for_status()
-    data = response.json() if response.content else {}
-    candidates = data.get("candidates", [])
-    if not candidates:
-        raise RuntimeError("Gemini returned no candidates.")
+    for candidate_model in candidate_models:
+        attempted.append(candidate_model)
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{candidate_model}:generateContent?key={api_key.strip()}"
 
-    parts = candidates[0].get("content", {}).get("parts", [])
-    text = "\n".join(str(part.get("text", "")) for part in parts if isinstance(part, dict)).strip()
-    if not text:
-        raise RuntimeError("Gemini returned an empty response.")
-    return text
+        for attempt in range(3):
+            try:
+                response = requests.post(url, json=payload, timeout=timeout_seconds)
+            except requests.Timeout as exc:
+                raise RuntimeError(f"Gemini request timed out after {timeout_seconds}s.") from exc
+
+            if response.status_code == 429:
+                if attempt < 2:
+                    retry_after_header = response.headers.get("Retry-After", "").strip()
+                    try:
+                        wait_seconds = max(1, int(float(retry_after_header))) if retry_after_header else (attempt + 1) * 2
+                    except ValueError:
+                        wait_seconds = (attempt + 1) * 2
+                    time.sleep(wait_seconds)
+                    continue
+
+                # Try next model if the current one is quota-limited.
+                break
+
+            if response.status_code == 404:
+                break
+
+            if response.status_code >= 400:
+                raise RuntimeError(f"Gemini request failed: {_extract_gemini_error_message(response)}")
+
+            data = response.json() if response.content else {}
+            candidates = data.get("candidates", [])
+            if not candidates:
+                raise RuntimeError("Gemini returned no candidates.")
+
+            parts = candidates[0].get("content", {}).get("parts", [])
+            text = "\n".join(str(part.get("text", "")) for part in parts if isinstance(part, dict)).strip()
+            if not text:
+                raise RuntimeError("Gemini returned an empty response.")
+            return text
+
+    tried = ", ".join(attempted)
+    raise RuntimeError(
+        "Gemini generation could not be completed. "
+        f"Attempted models: {tried}. The key is likely quota-limited for generation right now."
+    )
 
 
 def generate_ai_brief(

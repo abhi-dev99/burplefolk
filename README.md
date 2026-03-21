@@ -6,7 +6,7 @@ This application analyzes multi-table relational data from SQLite databases or C
 
 - Schema understanding (tables, columns, candidate keys)
 - Relationship mapping and ER structure
-- Data quality metrics (nulls, completeness, freshness, consistency)
+- Data quality metrics (nulls, completeness, consistency, temporal regularity bonus/penalty)
 - AI-assisted business context summaries
 - Human-readable data dictionaries
 - Exportable governance artifacts with immutable audit hashes
@@ -36,9 +36,10 @@ This application analyzes multi-table relational data from SQLite databases or C
 
 - Completeness scoring
 - Consistency scoring
-- Freshness scoring for time dimensions
+- Temporal regularity bonus/penalty for time dimensions (relative cadence, not absolute recency)
 - Duplicate identifier checks
 - Rule-based issue detection
+- Quality formula: base score is `50% completeness + 50% consistency`, then temporal regularity adjusts the score up or down.
 
 1. Data Dictionary Agent
 

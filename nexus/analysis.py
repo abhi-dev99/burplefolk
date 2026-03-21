@@ -23,6 +23,7 @@ def run_analysis(
     ollama_model: str = "",
     ollama_endpoint: str = "http://localhost:11434",
     enable_ai_erd_fallback: bool = False,
+    temporal_cadence_days: Optional[float] = None,
 ) -> Dict:
     def emit(progress_value: int, message: str) -> None:
         if progress_callback:
@@ -68,7 +69,13 @@ def run_analysis(
     table_profiles = []
     for table_name, df in tables.items():
         total_rows = row_counts.get(table_name, len(df))
-        profile = profile_table(table_name, df, total_rows, pk_map.get(table_name, []))
+        profile = profile_table(
+            table_name,
+            df,
+            total_rows,
+            pk_map.get(table_name, []),
+            expected_cadence_days=temporal_cadence_days,
+        )
         table_profiles.append(profile)
 
     emit(75, "Building data dictionary")
@@ -141,6 +148,7 @@ def run_analysis(
         "source_type": source_type,
         "tables": tables,
         "row_counts": row_counts,
+        "temporal_cadence_days": temporal_cadence_days,
         "pk_map": pk_map,
         "relationships": merged_relationships,
         "table_profiles": table_profiles,

@@ -1,0 +1,62 @@
+import { useState, createContext, useContext } from 'react';
+import { LandingPage } from './components/landing-page';
+import { UploadPage } from './components/upload-page';
+import { AnalysisPage } from './components/analysis-page';
+
+type Theme = 'dark' | 'light';
+
+interface ThemeContextType {
+  theme: Theme;
+  toggleTheme: () => void;
+}
+
+const ThemeContext = createContext<ThemeContextType>({
+  theme: 'dark',
+  toggleTheme: () => {},
+});
+
+export const useTheme = () => useContext(ThemeContext);
+
+export default function Component() {
+  const [currentPage, setCurrentPage] = useState<'landing' | 'upload' | 'analysis'>('landing');
+  const [analysisData, setAnalysisData] = useState<any>(null);
+  const [theme, setTheme] = useState<Theme>('dark');
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+  };
+
+  const handleStartAnalysis = () => {
+    setCurrentPage('upload');
+  };
+
+  const handleDataUploaded = (data: any) => {
+    setAnalysisData(data);
+    setCurrentPage('analysis');
+  };
+
+  const handleBackToHome = () => {
+    setCurrentPage('landing');
+    setAnalysisData(null);
+  };
+
+  return (
+    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+      <div className={theme === 'dark' ? 'dark' : ''}>
+        <div className="min-h-screen bg-white dark:bg-[#0d0d0d] text-gray-900 dark:text-gray-100 transition-colors duration-200">
+          <style dangerouslySetInnerHTML={{
+            __html: `
+              * {
+                font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+              }
+            `
+          }} />
+          
+          {currentPage === 'landing' && <LandingPage onGetStarted={handleStartAnalysis} />}
+          {currentPage === 'upload' && <UploadPage onDataUploaded={handleDataUploaded} onBack={handleBackToHome} />}
+          {currentPage === 'analysis' && <AnalysisPage data={analysisData} onBack={handleBackToHome} />}
+        </div>
+      </div>
+    </ThemeContext.Provider>
+  );
+}

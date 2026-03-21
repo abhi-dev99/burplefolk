@@ -247,10 +247,13 @@ def render_metric_explanations() -> None:
         st.markdown(
             """
 **Data Quality Score**
-- Weighted formula: `45% completeness + 35% consistency + 20% freshness`.
+- Base formula: `50% completeness + 50% consistency`.
+- Temporal regularity adjustment: `bonus/penalty up to +/-10 points`.
+- In plain language: if data arrives at its usual rhythm, score gets a bonus; if updates become erratic or slow down sharply, score gets a penalty.
+- Expected rhythm is user-defined in the Data Quality tab (for example, `1 day`, `2 weeks`, `3 months`).
 - Completeness: percentage of non-null values.
 - Consistency: dominant type agreement inside each column.
-- Freshness: recency of date/time columns (newer values score higher).
+- Temporal regularity: compares the latest observed interval to your chosen expected cadence.
 
 **Relationship Confidence**
 - For inferred relationships, confidence is overlap ratio between candidate child keys and parent key values.
@@ -266,6 +269,30 @@ def render_metric_explanations() -> None:
 
 def main() -> None:
     init_page()
+
+    cadence_days_map = {
+        "second": 1.0 / 86400.0,
+        "minute": 1.0 / 1440.0,
+        "hour": 1.0 / 24.0,
+        "half-day": 0.5,
+        "day": 1.0,
+        "week": 7.0,
+        "month": 30.4375,
+        "quarter": 91.3125,
+        "year": 365.25,
+    }
+    if "temporal_cadence_value" not in st.session_state:
+        st.session_state["temporal_cadence_value"] = 1
+    if "temporal_cadence_unit" not in st.session_state:
+        st.session_state["temporal_cadence_unit"] = "day"
+
+    temporal_cadence_days = float(st.session_state["temporal_cadence_value"]) * cadence_days_map[
+        st.session_state["temporal_cadence_unit"]
+    ]
+    cadence_label = (
+        f"{int(st.session_state['temporal_cadence_value'])} {st.session_state['temporal_cadence_unit']}"
+        f"{'' if int(st.session_state['temporal_cadence_value']) == 1 else 's'}"
+    )
 
     with st.sidebar:
         st.header("Ingestion")
@@ -392,7 +419,7 @@ def main() -> None:
                 enable_ai_erd_fallback = False
         else:
             gemini_api_key = st.text_input("Gemini API key", type="password", value="")
-            llm_model = st.text_input("Gemini model", value="gemini-1.5-flash")
+            llm_model = st.text_input("Gemini model", value="gemini-2.0-flash")
 
             if st.button("Test Gemini connection", use_container_width=True, key="test_ai_connection_gemini"):
                 ok, msg = test_gemini_connection(gemini_api_key, model=llm_model, timeout_seconds=12)
@@ -462,6 +489,7 @@ def main() -> None:
                 ollama_model=llm_model if ai_provider == "ollama" else "",
                 ollama_endpoint=ollama_endpoint,
                 enable_ai_erd_fallback=enable_ai_erd_fallback,
+                temporal_cadence_days=temporal_cadence_days,
             )
     except Exception as exc:
         progress.empty()
@@ -575,7 +603,10 @@ def main() -> None:
                         "unique_percent",
                         "dominant_value_type",
                         "type_consistency",
-                        "freshness_lag_days",
+                        "temporal_expected_gap_days",
+                        "temporal_lag_ratio",
+                        "temporal_regularity_score",
+                        "temporal_adjustment_points",
                     ]
                 ],
                 use_container_width=True,
@@ -606,14 +637,34 @@ def main() -> None:
             st.warning("No relationships inferred with current data sample.")
 
     with quality_tab:
+        st.subheader("Temporal Cadence Settings")
+        q1, q2 = st.columns(2)
+        with q1:
+            st.number_input(
+                "Cadence value",
+                min_value=1,
+                max_value=1000,
+                step=1,
+                key="temporal_cadence_value",
+            )
+        with q2:
+            st.selectbox(
+                "Cadence unit",
+                ["second", "minute", "hour", "half-day", "day", "week", "month", "quarter", "year"],
+                key="temporal_cadence_unit",
+            )
+        st.caption(f"Current expected cadence: {cadence_label}. Changes apply immediately on rerun.")
+
         quality_df = pd.DataFrame(
             [
                 {
                     "table": p["table"],
                     "quality_score": p["quality_score"],
+                    "base_quality_score": p.get("base_quality_score", p["quality_score"]),
                     "completeness_score": p["completeness_score"],
                     "consistency_score": p["consistency_score"],
-                    "freshness_score": p["freshness_score"],
+                    "temporal_bonus_points": p.get("temporal_bonus_points", 0.0),
+                    "expected_cadence_days": p.get("temporal_expected_cadence_days"),
                     "duplicate_pk_records": p["duplicate_pk_records"],
                 }
                 for p in analysis["table_profiles"]
