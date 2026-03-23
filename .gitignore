@@ -1,5 +1,14 @@
 outputs/
 testing/
-
-outputs/
-testing/
+*.log
+.agent/
+.agents/
+__pycache__/
+.venv/
+venv/
+test.csv
+test.sqlite
+.stitch/
+00-codeapex-ftw/
+api_fix.py
+skills-lock.json
