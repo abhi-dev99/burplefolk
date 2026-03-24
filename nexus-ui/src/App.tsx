@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Database, FileUp, ListTree, ActivitySquare, ShieldCheck, Share2, BrainCircuit, Moon, Sun, ArrowRight, Loader2, Download, ArrowUpDown, Key } from 'lucide-react';
+import { 
+  Database, UploadCloud, Loader2, ArrowRight, Table2, LayoutGrid, AlertCircle, FileText, CheckCircle2, ChevronRight, BarChart4, ChevronRight as ChevronRightIcon, Play, RefreshCw, Layers, ListTree, Check, Settings, Code, Image as ImageIcon, ShieldCheck, Share2, BrainCircuit, ActivitySquare, Download, FileUp
+} from 'lucide-react';
+import { toSvg } from 'html-to-image';
 import clsx from 'clsx';
 import mermaid from 'mermaid';
 import axios from 'axios';
@@ -9,83 +12,210 @@ import ErrorBoundary from './components/ErrorBoundary';
 
 const API_BASE = 'http://localhost:8000/api';
 
+const CycleText = () => {
+  const texts = ["Extracting schema profiles...", "Analyzing entity relationships...", "Evaluating data quality...", "Compiling business context...", "Mapping intelligence traces..."];
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setIdx(i => (i + 1) % texts.length), 2000);
+    return () => clearInterval(t);
+  }, []);
+  return <p className="text-neutral-500 dark:text-neutral-400 text-xl font-light tracking-wide transition-opacity duration-300 animate-pulse">{texts[idx]}</p>;
+};
+
 // ------------------------------------
 // UI COMPONENTS
 // ------------------------------------
-function ThemeToggle() {
-  const [isDark, setIsDark] = useState(false);
+function SettingsMenu({ navLayout, setNavLayout }: { navLayout: string, setNavLayout: (m: 'vertical' | 'horizontal') => void }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [theme, setTheme] = useState('system default');
+  const [fontSize, setFontSize] = useState('medium');
+  const [reducedMotion, setReducedMotion] = useState(false);
 
   useEffect(() => {
-    setIsDark(document.documentElement.classList.contains('dark'));
-  }, []);
-
-  const toggleTheme = () => {
     const root = document.documentElement;
-    if (root.classList.contains('dark')) {
-      root.classList.remove('dark');
-      setIsDark(false);
-    } else {
+    root.classList.remove('dark', 'contrast-more');
+
+    if (theme === 'dark') {
       root.classList.add('dark');
-      setIsDark(true);
+    } else if (theme === 'high contrast') {
+      root.classList.add('dark', 'contrast-more');
+    } else if (theme === 'system default') {
+      if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        root.classList.add('dark');
+      }
+      if (window.matchMedia('(prefers-contrast: more)').matches) {
+        root.classList.add('contrast-more');
+      }
     }
-  };
+  }, [theme]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (fontSize === 'small') root.style.fontSize = '14px';
+    else if (fontSize === 'medium') root.style.fontSize = '16px';
+    else if (fontSize === 'large') root.style.fontSize = '18px';
+    else if (fontSize === 'extra large') root.style.fontSize = '20px';
+  }, [fontSize]);
+
+  useEffect(() => {
+    if (reducedMotion) {
+      document.documentElement.classList.add('reduced-motion');
+    } else {
+      document.documentElement.classList.remove('reduced-motion');
+    }
+  }, [reducedMotion]);
 
   return (
-    <button 
-      onClick={toggleTheme}
-      className={clsx(
-        "relative flex items-center justify-center p-2 rounded-full transition-all duration-500",
-        "bg-white/40 dark:bg-black/40 backdrop-blur-xl border border-black/5 dark:border-white/10 shadow-sm",
-        "hover:bg-white/60 dark:hover:bg-white/10"
+    <div className="relative">
+      <button 
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-10 h-10 flex items-center justify-center rounded-full bg-black/5 hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/20 transition-colors pointer-events-auto"
+      >
+        <Settings className="w-5 h-5 text-neutral-600 dark:text-neutral-300" />
+      </button>
+
+      {isOpen && (
+        <>
+        <div className="fixed inset-0 z-[99]" onClick={() => { setIsOpen(false); }} />
+        <div className="absolute right-0 top-14 w-56 bg-white dark:bg-[#1a1b1e] border border-neutral-200 dark:border-neutral-800 rounded-[1.5rem] shadow-2xl overflow-visible z-[100] py-2 animate-in fade-in slide-in-from-top-2 backdrop-blur-xl">
+          
+          {/* Theme setting */}
+          <div className="group relative">
+            <button className="w-full px-5 py-2.5 flex items-center justify-between hover:bg-neutral-100 dark:hover:bg-white/5 text-sm transition-colors">
+              <span className="font-medium text-neutral-700 dark:text-neutral-300">Theme</span>
+              <ChevronRight className="w-4 h-4 text-neutral-400" />
+            </button>
+            
+            <div className="absolute right-[100%] top-0 w-48 bg-white dark:bg-[#1a1b1e] border border-neutral-200 dark:border-neutral-800 rounded-[1.5rem] shadow-xl py-2 mr-3 animate-in fade-in slide-in-from-right-2 z-[101] opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity">
+              {['Light', 'Dark', 'System default', 'High contrast'].map(t => (
+                <button 
+                  key={t}
+                  onClick={() => setTheme(t.toLowerCase())}
+                  className="w-full px-4 py-2 flex items-center justify-between hover:bg-neutral-100 dark:hover:bg-white/5 text-sm text-neutral-600 dark:text-neutral-400 transition-colors"
+                >
+                  {t}
+                  {theme === t.toLowerCase() && <Check className="w-4 h-4 text-blue-500" />}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="h-px w-full bg-neutral-200 dark:bg-neutral-800 my-1" />
+
+          {/* Accessibility Settings */}
+          <div className="group relative">
+            <button className="w-full px-5 py-2.5 flex items-center justify-between hover:bg-neutral-100 dark:hover:bg-white/5 text-sm transition-colors">
+              <span className="font-medium text-neutral-700 dark:text-neutral-300">Font Size</span>
+              <ChevronRight className="w-4 h-4 text-neutral-400" />
+            </button>
+            
+            <div className="absolute right-[100%] top-0 w-48 bg-white dark:bg-[#1a1b1e] border border-neutral-200 dark:border-neutral-800 rounded-[1.5rem] shadow-xl py-2 mr-3 animate-in fade-in slide-in-from-right-2 z-[101] opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity">
+              {['Small', 'Medium', 'Large', 'Extra large'].map(s => (
+                <button 
+                  key={s}
+                  onClick={() => setFontSize(s.toLowerCase())}
+                  className="w-full px-4 py-2 flex items-center justify-between hover:bg-neutral-100 dark:hover:bg-white/5 text-sm text-neutral-600 dark:text-neutral-400 transition-colors"
+                >
+                  {s}
+                  {fontSize === s.toLowerCase() && <Check className="w-4 h-4 text-blue-500" />}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="group relative">
+            <button onClick={() => setReducedMotion(!reducedMotion)} className="w-full px-5 py-2.5 flex items-center justify-between hover:bg-neutral-100 dark:hover:bg-white/5 text-sm transition-colors">
+              <span className="font-medium text-neutral-700 dark:text-neutral-300">Reduced Motion</span>
+              <div className={clsx("w-7 h-4 rounded-full flex items-center p-0.5 transition-colors", reducedMotion ? 'bg-[#0059B5] dark:bg-[#60A5FA] justify-end' : 'bg-neutral-300 dark:bg-neutral-600 justify-start')}>
+                <div className="w-3 h-3 bg-white rounded-full shadow-sm" />
+              </div>
+            </button>
+          </div>
+
+          <div className="h-px w-full bg-neutral-200 dark:bg-neutral-800 my-1" />
+
+          {/* Nav Settings */}
+          <div className="group relative">
+            <button onClick={(e) => { e.stopPropagation(); setNavLayout(navLayout === 'vertical' ? 'horizontal' : 'vertical'); setIsOpen(false); }} className="w-full px-5 py-2.5 flex items-center justify-between hover:bg-neutral-100 dark:hover:bg-white/5 text-sm transition-colors">
+              <span className="font-medium text-neutral-700 dark:text-neutral-300">Vertical Controls</span>
+              <div className={clsx("w-7 h-4 rounded-full flex items-center p-0.5 cursor-pointer transition-colors shadow-inner", navLayout === 'vertical' ? 'bg-[#0059B5] dark:bg-[#60A5FA] justify-end' : 'bg-neutral-300 dark:bg-neutral-600 justify-start')}>
+                <div className="w-3 h-3 bg-white rounded-full shadow border-black/5" />
+              </div>
+            </button>
+          </div>
+
+        </div>
+        </>
       )}
-    >
-      {isDark ? <Sun className="w-[18px] h-[18px] text-neutral-300" /> : <Moon className="w-[18px] h-[18px] text-neutral-600" />}
-    </button>
+    </div>
   );
 }
 
-function TopNav({ activeTab, setActiveTab }: { activeTab?: string, setActiveTab?: (t: string) => void }) {
+function TopNav({ activeTab, setActiveTab, resetState, navLayout, setNavLayout }: { activeTab?: string, setActiveTab?: (t: string) => void, resetState?: () => void, navLayout: string, setNavLayout: (m: 'vertical' | 'horizontal') => void }) {
   const navItems = [
-    { id: 'overview', label: 'Overview' },
-    { id: 'schema', label: 'Schema' },
-    { id: 'quality', label: 'Quality' },
-    { id: 'er', label: 'ER Graph' },
-    { id: 'dictionary', label: 'Dictionary' },
-    { id: 'ai', label: 'AI Review' },
-    { id: 'exports', label: 'Exports' },
-    { id: 'editor', label: 'Editor' }
+    { id: 'overview', label: 'Overview', icon: LayoutGrid },
+    { id: 'schema', label: 'Schema', icon: Table2 },
+    { id: 'quality', label: 'Quality', icon: CheckCircle2 },
+    { id: 'er', label: 'ER Graph', icon: Layers },
+    { id: 'dictionary', label: 'Dictionary', icon: FileText },
+    { id: 'ai', label: 'AI Review', icon: BrainCircuit },
+    { id: 'exports', label: 'Exports', icon: BarChart4 },
+    { id: 'editor', label: 'Editor', icon: Code }
   ];
 
   return (
-    <nav className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[95%] max-w-5xl rounded-[2rem] bg-white/60 dark:bg-black/40 backdrop-blur-3xl border border-white/40 dark:border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.04)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.2)] print-hidden">
-      <div className="flex items-center justify-between px-6 py-3">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#0059B5] to-[#0071E3] flex items-center justify-center shadow-lg shadow-blue-500/20">
-            <Database className="w-4 h-4 text-white" />
-          </div>
-          <span className="font-medium text-lg tracking-tight text-neutral-900 dark:text-neutral-100 font-inter">Nexus <span className="font-light">Intelligence</span></span>
+    <nav className={clsx(
+      "fixed z-50 print:hidden transition-all duration-300",
+      navLayout === 'horizontal' 
+        ? "top-4 left-1/2 -translate-x-1/2 w-[96%] max-w-6xl rounded-[2rem] bg-white/60 dark:bg-black/40 backdrop-blur-xl border border-white/40 dark:border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.04)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.2)]" 
+        : "top-0 left-0 h-full w-52 bg-white/60 dark:bg-black/40 backdrop-blur-xl border-r border-white/40 dark:border-white/10 shadow-xl"
+    )}>
+      <div className={clsx(
+        navLayout === 'horizontal' 
+          ? "flex items-center justify-between px-6 py-3" 
+          : "flex flex-col h-full px-6 py-8"
+      )}>
+        <div className={clsx("flex items-center gap-1 cursor-pointer shrink-0", navLayout === 'vertical' && "mb-10")} onClick={() => resetState?.()}>
+          <span className="text-xl tracking-tight text-neutral-900 dark:text-neutral-100 font-inter">
+            <span className="font-bold">nexus</span> <span className="font-normal">intelligence.</span>
+          </span>
         </div>
-        
-        {setActiveTab && (
-          <div className="hidden md:flex items-center gap-1 bg-black/5 dark:bg-white/5 p-1 rounded-full overflow-x-auto max-w-[50vw] custom-scrollbar">
+
+        {activeTab && setActiveTab && (
+          <div className={clsx(
+            "no-scrollbar",
+            navLayout === 'horizontal' 
+              ? "flex items-center gap-1 bg-black/5 dark:bg-white/5 p-1 rounded-full overflow-x-auto" 
+              : "flex flex-col items-stretch gap-1.5 flex-1 w-full"
+          )}>
             {navItems.map(item => (
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
                 className={clsx(
-                  "px-4 py-1.5 rounded-full text-[13px] font-medium transition-all duration-300",
+                  "font-medium transition-all duration-300 whitespace-nowrap",
+                  navLayout === 'horizontal' ? "px-4 py-1.5 rounded-full text-[13px]" : "px-5 py-3 rounded-xl text-left text-[14px] flex items-center justify-between",
                   activeTab === item.id 
                     ? "bg-white dark:bg-neutral-800 text-black dark:text-white shadow-sm" 
-                    : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200"
+                    : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5"
                 )}
               >
-                {item.label}
+                {navLayout === 'vertical' && <item.icon className="w-4 h-4 mr-3" />}
+                <span className={clsx(navLayout === 'horizontal' ? "" : "text-left")}>{item.label}</span>
+                {navLayout === 'vertical' && activeTab === item.id && <ChevronRightIcon className="w-4 h-4 ml-auto" />}
               </button>
             ))}
           </div>
         )}
-
-        <ThemeToggle />
+        <div className={clsx("flex items-center gap-3", navLayout === 'vertical' && "mt-auto pt-6 border-t border-black/5 dark:border-white/5 w-full justify-start pl-2")}>
+          <button 
+            onClick={resetState}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 text-sm font-medium transition-colors"
+          >
+            <RefreshCw className="w-4 h-4" /> Start Over
+          </button>
+          <SettingsMenu navLayout={navLayout} setNavLayout={setNavLayout} />
+        </div>
       </div>
     </nav>
   );
@@ -107,20 +237,20 @@ function DataView({ activeTab, analysisData }: { activeTab: string, analysisData
   const mermaidRef = useRef<HTMLDivElement>(null);
 
   const renderRowTable = (row: any, color: 'emerald' | 'rose') => {
-    if (!row) return <span className={`text-${color}-500 italic`}>No data available</span>;
+    if (!row) return <span className={"text-" + color + "-500 italic"}>No data available</span>;
     const entries = Object.entries(row);
-    if (entries.length === 0) return <span className={`text-${color}-500 italic`}>No data available</span>;
+    if (entries.length === 0) return <span className={"text-" + color + "-500 italic"}>No data available</span>;
     return (
-      <div className="overflow-x-auto w-full">
-        <table className="w-full text-left text-[11px] font-mono whitespace-nowrap">
-           <thead>
-             <tr className={`border-b border-${color}-500/20`}>
-               {entries.map(([k]) => <th key={k} className={`p-2 text-${color}-700 dark:text-${color}-300 font-medium`}>{k}</th>)}
+      <div className="overflow-x-auto w-full border border-black/5 dark:border-white/5 rounded-xl bg-white/50 dark:bg-black/30">
+        <table className="w-full text-left font-mono whitespace-nowrap">
+           <thead className={"bg-" + color + "-500/5 dark:bg-" + color + "-500/10"}>
+             <tr>
+               {entries.map(([k], i) => <th key={k} className={"px-4 py-3 text-[10px] font-bold uppercase tracking-widest border-b border-" + color + "-500/20 text-" + color + "-700 dark:text-" + color + "-400"}>{k}</th>)}
              </tr>
            </thead>
-           <tbody>
-             <tr className={`divide-x divide-${color}-500/10`}>
-               {entries.map(([_, v], i) => <td key={i} className={`p-2 text-${color}-900 dark:text-${color}-100`}>{String(v)}</td>)}
+           <tbody className="divide-y divide-black/5 dark:divide-white/5">
+             <tr className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+               {entries.map(([_, v], i) => <td key={i} className={"px-4 py-3 text-[11px] text-" + color + "-900 dark:text-" + color + "-100"}>{String(v)}</td>)}
              </tr>
            </tbody>
         </table>
@@ -192,8 +322,12 @@ function DataView({ activeTab, analysisData }: { activeTab: string, analysisData
             <div className="text-5xl font-light text-neutral-900 dark:text-neutral-100">{tables.length}</div>
           </GlassCard>
           <GlassCard className="p-8">
-            <h3 className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest mb-2">Storage (Est)</h3>
-            <div className="text-5xl font-light text-neutral-900 dark:text-neutral-100">{Math.max(1, Math.round(tables.reduce((acc:number, t:any)=> acc + (t.estimated_total_rows||0)*(t.column_count||5)*8/1024, 0)))} <span className="text-2xl">KB</span></div>
+            <h3 className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest mb-2">Storage</h3>
+            <div className="text-5xl font-light text-neutral-900 dark:text-neutral-100">
+              {analysisData?.analysis?.storage_bytes ? 
+                Math.max(1, Math.round(analysisData.analysis.storage_bytes / 1024)) : 
+                Math.max(1, Math.round(tables.reduce((acc:number, t:any)=> acc + (t.estimated_total_rows||0)*(t.column_count||5)*8/1024, 0)))} <span className="text-2xl">KB</span>
+            </div>
           </GlassCard>
           <GlassCard className="p-8">
             <h3 className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest mb-2">Avg Quality</h3>
@@ -209,12 +343,12 @@ function DataView({ activeTab, analysisData }: { activeTab: string, analysisData
           <GlassCard className="p-8">
             <h3 className="text-lg font-light text-neutral-900 dark:text-white mb-4">Risk Snapshot</h3>
             <div className="space-y-4">
-              {tables.sort((a:any, b:any) => a.quality_score - b.quality_score).slice(0, 5).map((t:any) => (
-                <div key={t.table} className="flex justify-between items-center text-sm border-b border-black/5 dark:border-white/5 pb-2 last:border-0 last:pb-0">
-                  <span className="text-neutral-700 dark:text-neutral-300 font-medium">{t.table}</span>
+              {[...tables].sort((a:any, b:any) => (a.quality_score || 0) - (b.quality_score || 0)).slice(0, 5).map((t:any, idx) => (
+                <div key={t.table || idx} className="flex justify-between items-center text-sm border-b border-black/5 dark:border-white/5 pb-2 last:border-0 last:pb-0">
+                  <span className="text-neutral-700 dark:text-neutral-300 font-medium">{t.table || t.table_name || 'Unknown Table'}</span>
                   <div className="flex items-center gap-4">
                     <span className="text-neutral-400 font-light">{t.issues?.length || 0} issues</span>
-                    <span className={clsx("font-medium", t.quality_score > 80 ? "text-emerald-500" : "text-rose-500")}>{t.quality_score}%</span>
+                    <span className={clsx("font-medium", (t.quality_score || 0) > 80 ? "text-emerald-500" : "text-rose-500")}>{Math.round(t.quality_score || 0)}%</span>
                   </div>
                 </div>
               ))}
@@ -223,9 +357,30 @@ function DataView({ activeTab, analysisData }: { activeTab: string, analysisData
 
           <GlassCard className="p-8">
               <h3 className="text-lg font-light text-neutral-900 dark:text-white mb-4">Business Context</h3>
-              <p className="text-neutral-600 dark:text-neutral-300 font-light leading-relaxed whitespace-pre-wrap text-base">
-                {highlightText(analysisData?.analysis?.business_context || "No context generated.")}
-              </p>
+              {(() => {
+                const ctx = analysisData?.analysis?.business_context || "No context generated.";
+                const splitIdx = ctx.indexOf("Prioritize key constraints");
+                const mainText = splitIdx > -1 ? ctx.slice(0, splitIdx) : ctx;
+                const infoText = splitIdx > -1 ? ctx.slice(splitIdx) : "";
+                return (
+                  <div className="space-y-3">
+                    <p 
+                      className="text-neutral-600 dark:text-neutral-300 font-light leading-relaxed whitespace-pre-wrap text-base"
+                      dangerouslySetInnerHTML={{ __html: highlightText(mainText) }}
+                    />
+                    {infoText && (
+                      <div className="bg-[#0059B5]/5 dark:bg-[#60A5FA]/10 border border-[#0059B5]/10 dark:border-[#60A5FA]/20 rounded-xl p-4 flex gap-3 items-start mt-4">
+                         <div className="mt-0.5 w-6 h-6 rounded-full bg-[#0059B5]/10 dark:bg-[#60A5FA]/20 flex flex-shrink-0 items-center justify-center border border-[#0059B5]/20 dark:border-[#60A5FA]/30">
+                            <span className="text-[#0059B5] dark:text-[#60A5FA] font-serif font-bold italic text-sm">i</span>
+                         </div>
+                         <p className="text-sm text-[#0059B5] dark:text-[#60A5FA] font-medium leading-relaxed tracking-wide">
+                            {infoText}
+                         </p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
           </GlassCard>
 
           <GlassCard className="p-8">
@@ -241,7 +396,7 @@ function DataView({ activeTab, analysisData }: { activeTab: string, analysisData
                  </div>
                  <div className="flex items-center justify-between text-sm pb-2">
                    <span className="text-neutral-600 dark:text-neutral-300 font-light">Orphan Tables (No FKs)</span>
-                   <span className="text-amber-500 font-medium">{tables.filter((t:any) => !t.column_profiles?.some((c:any)=>String(c.semantic_role).includes('foreign'))).length} tables</span>
+                   <span className="text-amber-500 font-medium">{tables.filter((t:any) => !((analysisData?.analysis?.relationships || []).some((r:any) => r.source === t.table || r.target === t.table))).length} tables</span>
                  </div>
               </div>
           </GlassCard>
@@ -273,7 +428,7 @@ function DataView({ activeTab, analysisData }: { activeTab: string, analysisData
             </div>
             <div className="grid gap-12">
               {profiles.map((profile: any) => (
-                <GlassCard key={profile.table} className="scroll-mt-32" id={`schema-table-${profile.table}`}>
+                <GlassCard key={profile.table} className="scroll-mt-32">
                 <div className="px-8 py-6 flex items-center justify-between border-b border-black/5 dark:border-white/5 bg-white/20 dark:bg-black/20">
                   <h3 className="text-2xl font-light tracking-wide text-neutral-900 dark:text-white flex items-center gap-4">
                     {profile.table}
@@ -362,8 +517,21 @@ function DataView({ activeTab, analysisData }: { activeTab: string, analysisData
                       <span>Consistency: {profile.consistency_score}%</span>
                     </div>
                  </div>
-                 <div className={clsx("text-5xl font-light", profile.quality_score > 80 ? "text-emerald-500" : profile.quality_score > 60 ? "text-amber-500" : "text-rose-500")}>
-                    {profile.quality_score}%
+                 <div className="relative group/score inline-block">
+                   <div tabIndex={0} className={clsx("text-5xl font-light cursor-help hover:opacity-80 transition-opacity", profile.quality_score > 80 ? "text-emerald-500" : profile.quality_score > 60 ? "text-amber-500" : "text-rose-500")}>
+                      {profile.quality_score}%
+                   </div>
+                   <div className="absolute right-0 top-full mt-2 w-72 bg-white dark:bg-[#0b1220] border border-neutral-200 dark:border-neutral-800 rounded-xl shadow-2xl p-4 opacity-0 pointer-events-none group-hover/score:opacity-100 group-hover/score:pointer-events-auto group-focus/score:opacity-100 group-focus/score:pointer-events-auto transition-opacity z-[999] font-sans">
+                     <div className="text-[10px] font-semibold text-neutral-400 dark:text-neutral-500 uppercase tracking-widest mb-2 border-b border-black/5 dark:border-white/5 pb-2">Algorithm Definition</div>
+                     <div className="bg-black/5 dark:bg-white/5 p-3 rounded-lg text-[13px] font-mono text-neutral-800 dark:text-neutral-300 mb-2 leading-relaxed font-medium">
+                       Quality = (Completeness × 0.5) + (Consistency × 0.5)
+                     </div>
+                     <div className="flex justify-between text-xs text-neutral-500">
+                       <span className="font-mono">{profile.completeness_score}% × 0.5</span>
+                       <span>+</span>
+                       <span className="font-mono">{profile.consistency_score}% × 0.5</span>
+                     </div>
+                   </div>
                  </div>
                </div>
                
@@ -380,15 +548,15 @@ function DataView({ activeTab, analysisData }: { activeTab: string, analysisData
                       <div className="flex flex-col gap-2">
                          <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400 tracking-wider">Valid Sample Record</span>
                          <div className="bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/20 rounded-xl overflow-x-auto">
-                            {renderRowTable(analysisData?.sample_tables?.[profile.table]?.[0] || { status: "OK", mock_data: "true" }, 'emerald')}
+                            {renderRowTable(analysisData?.analysis?.sample_tables?.[profile.table]?.[0] || { status: "OK", mock_data: "true" }, 'emerald')}
                          </div>
                       </div>
                       
                       <div className="flex flex-col gap-2">
                          <span className="text-[10px] uppercase font-bold text-rose-600 dark:text-rose-400 tracking-wider">Violation Trace Snapshots</span>
                          <div className="flex flex-col gap-2">
-                           {((analysisData?.sample_tables?.[profile.table] || []).length > 1 
-                             ? (analysisData.sample_tables[profile.table] as any[]).slice(1, Math.min(4, profile.issues.length + 1)) 
+                           {((analysisData?.analysis?.sample_tables?.[profile.table] || []).length > 1 
+                             ? (analysisData.analysis.sample_tables[profile.table] as any[]).slice(1, Math.min(4, profile.issues.length + 1)) 
                              : [{ _error: "MOCKED VIOLATION", anomaly: "Missing parameter" }])
                              .map((row: any, i: number) => (
                              <div key={i} className="bg-rose-500/5 dark:bg-rose-500/10 border border-rose-500/20 rounded-xl overflow-x-auto relative group">
@@ -413,9 +581,38 @@ function DataView({ activeTab, analysisData }: { activeTab: string, analysisData
       </div>
 
       {/* ER GRAPH */}
-      <div className={clsx("animate-in fade-in duration-700 w-full mt-24 flex flex-col h-[calc(100vh-120px)] print:hidden", activeTab !== 'er' && "hidden")}>
-        <h2 className="text-4xl font-light tracking-tight text-neutral-900 dark:text-white mb-8 shrink-0">Entity <span className="font-medium inline-block relative border-b border-rose-500/30">Relationships</span></h2>
-        <GlassCard className="p-0 flex-1 flex justify-center overflow-hidden w-full relative min-h-[600px]">
+      <div className={clsx("animate-in fade-in duration-700 w-full mt-24 print:mt-10 print:break-after-page print:block", activeTab !== 'er' && "hidden")}>
+        <div className="mb-8 flex justify-between items-end">
+          <h2 className="text-4xl font-light tracking-tight text-neutral-900 dark:text-white">Entity <span className="font-medium">Relationships</span></h2>
+          <div className="flex gap-3">
+             <button onClick={() => {
+                navigator.clipboard.writeText(analysisData?.er_diagram || "").then(() => {
+                   alert("Mermaid source logic copied to clipboard!");
+                });
+             }} className="px-4 py-2 hover:bg-black/5 dark:hover:bg-white/5 border border-black/10 dark:border-white/10 rounded-xl text-xs font-semibold uppercase tracking-wider text-neutral-600 dark:text-neutral-300 flex items-center gap-2 focus:ring-2 outline-none">
+                <Code className="w-4 h-4" /> Copy Mermaid
+             </button>
+             <button onClick={() => {
+                const node = document.getElementById('react-flow-er-container');
+                if (node) {
+                   toSvg(node, { backgroundColor: 'transparent' }).then((dataUrl) => {
+                       const link = document.createElement('a');
+                       link.download = 'nexus_er_diagram.svg';
+                       link.href = dataUrl;
+                       link.click();
+                   }).catch((err) => {
+                       console.error(err);
+                       alert("Failed to render SVG. Ensure the canvas is fully loaded.");
+                   });
+                } else {
+                   alert("ER Diagram wrapper not found!");
+                }
+             }} className="px-4 py-2 hover:bg-black/5 dark:hover:bg-white/5 border border-black/10 dark:border-white/10 rounded-xl text-xs font-semibold uppercase tracking-wider text-neutral-600 dark:text-neutral-300 flex items-center gap-2 focus:ring-2 outline-none">
+                <ImageIcon className="w-4 h-4" /> Download SVG
+             </button>
+          </div>
+        </div>
+        <GlassCard className="p-0 overflow-hidden bg-[#fafafa] dark:bg-[#0b1220]">
            <ERDiagram analysisData={analysisData} />
         </GlassCard>
       </div>
@@ -465,20 +662,35 @@ function DataView({ activeTab, analysisData }: { activeTab: string, analysisData
                          <tr key={i} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
                            <td className="px-6 py-4 font-medium text-neutral-900 dark:text-neutral-100">{row.column}</td>
                            <td className="px-6 py-4"><span className="font-mono text-xs text-[#0059B5] dark:text-[#60A5FA] bg-[#0059B5]/10 dark:bg-[#60A5FA]/10 px-2 py-1 rounded-md">{row.data_type}</span></td>
-                           <td className="px-6 py-4 font-light">
-                             <div className="flex gap-2 items-center flex-wrap">
-                               <span className={clsx("px-2 py-1.5 rounded-md text-xs font-medium", String(row.role).includes('primary_key') ? "bg-emerald-500/10 text-emerald-600 flex w-fit" : String(row.role).includes('foreign_key') ? "bg-amber-500/10 text-amber-600 flex w-fit" : "bg-neutral-500/10 text-neutral-500 flex w-fit")}>
-                                 {row.role || 'dimension'}
-                               </span>
-                               {(String(row.column).toLowerCase().includes('email') || String(row.column).toLowerCase().includes('phone') || String(row.column).toLowerCase().includes('address') || String(row.column).toLowerCase().includes('name')) && (
-                                 <span className="px-2 py-1.5 rounded-md text-xs font-medium bg-purple-500/10 text-purple-600 dark:text-purple-400">PII</span>
-                               )}
-                               {(String(row.column).toLowerCase().includes('card') || String(row.column).toLowerCase().includes('stripe') || String(row.column).toLowerCase().includes('payment')) && (
-                                 <span className="px-2 py-1.5 rounded-md text-xs font-medium bg-rose-500/10 text-rose-600 dark:text-rose-400">PCI-DSS</span>
-                               )}
-                             </div>
-                           </td>
-                           <td className="px-6 py-4 font-light max-w-xs">{row.description || '-'}</td>
+                           <td className="px-6 py-4">
+                       <div className="flex flex-wrap gap-2">
+                         <div 
+                           contentEditable 
+                           suppressContentEditableWarning
+                           onBlur={(e) => { row.role = e.currentTarget.innerText; }}
+                           className={clsx("px-2 py-1.5 rounded-md text-xs font-medium border border-transparent hover:border-neutral-300 dark:hover:border-neutral-700 outline-none transition-colors", String(row.role).includes('primary_key') ? "bg-emerald-500/10 text-emerald-600" : String(row.role).includes('foreign_key') ? "bg-amber-500/10 text-amber-600" : "bg-neutral-500/10 text-neutral-500")}
+                         >
+                           {row.role || 'dimension'}
+                         </div>
+                         {(String(row.column).toLowerCase().includes('email') || String(row.column).toLowerCase().includes('phone') || String(row.column).toLowerCase().includes('address') || String(row.column).toLowerCase().includes('name')) && (
+                           <span className="px-2 py-1.5 rounded-md text-xs font-medium bg-purple-500/10 text-purple-600 dark:text-purple-400">PII</span>
+                         )}
+                         {(String(row.column).toLowerCase().includes('card') || String(row.column).toLowerCase().includes('stripe') || String(row.column).toLowerCase().includes('payment')) && (
+                           <span className="px-2 py-1.5 rounded-md text-xs font-medium bg-rose-500/10 text-rose-600 dark:text-rose-400">PCI-DSS</span>
+                         )}
+                       </div>
+                     </td>
+                     <td className="px-6 py-4 w-full">
+                       <p 
+                         contentEditable
+                         suppressContentEditableWarning
+                         onBlur={(e) => { row.description = e.currentTarget.innerText; }}
+                         className="text-neutral-500 dark:text-neutral-400 font-light truncate max-w-[600px] hover:bg-black/5 dark:hover:bg-white/5 px-2 py-1 rounded cursor-text outline-none focus:bg-white dark:focus:bg-black focus:ring-1 focus:ring-blue-500 transition-colors" 
+                         title="Click to edit"
+                       >
+                         {row.description}
+                       </p>
+                     </td>
                          </tr>
                        ))}
                      </tbody>
@@ -621,7 +833,7 @@ function DataView({ activeTab, analysisData }: { activeTab: string, analysisData
       {/* EDITOR */}
       <div className={clsx("animate-in fade-in duration-700 w-full mt-24 print:hidden", activeTab !== 'editor' && "hidden")}>
         {(() => {
-          const editRows = analysisData?.sample_tables?.[currentEditorTarget] || [];
+          const editRows = analysisData?.analysis?.sample_tables?.[currentEditorTarget] || [];
           const editCols = editRows.length > 0 ? Object.keys(editRows[0]) : [];
 
           return (
@@ -640,40 +852,60 @@ function DataView({ activeTab, analysisData }: { activeTab: string, analysisData
         </div>
 
         <GlassCard className="overflow-hidden p-0">
-           <div className="bg-amber-500/10 text-amber-800 dark:text-amber-400 text-xs px-6 py-3 font-medium flex items-center gap-2">
-             <ActivitySquare className="w-4 h-4" /> Live Row Editor (Changes sync to output payload)
+           <div className="flex bg-amber-500/10 text-amber-800 dark:text-amber-400 text-xs px-6 py-3 font-medium items-center justify-between border-b border-amber-500/20">
+             <div className="flex items-center gap-2">
+                 <ActivitySquare className="w-4 h-4" /> Live Row Editor (Changes sync to output payload)
+             </div>
+             <button onClick={() => {
+                 const rows = analysisData?.analysis?.sample_tables?.[currentEditorTarget] || [];
+                 if (rows.length === 0) return;
+                 const headers = Object.keys(rows[0]);
+                 const csvContent = "data:text/csv;charset=utf-8," 
+                     + headers.join(",") + "\n"
+                     + rows.map((r:any) => headers.map(h => `"${String(r[h]).replace(/"/g, '""')}"`).join(",")).join("\n");
+                 const encodedUri = encodeURI(csvContent);
+                 const link = document.createElement("a");
+                 link.setAttribute("href", encodedUri);
+                 link.setAttribute("download", `nexus_${currentEditorTarget}_edited.csv`);
+                 document.body.appendChild(link);
+                 link.click();
+                 document.body.removeChild(link);
+             }} className="flex items-center gap-1.5 bg-amber-200/50 dark:bg-amber-900/50 hover:bg-amber-300 dark:hover:bg-amber-800 text-amber-900 dark:text-amber-200 border border-amber-500/30 px-3 py-1.5 rounded-lg shadow-sm transition-colors cursor-pointer">
+                <Download className="w-4 h-4" /> Save & Download CSV
+             </button>
            </div>
            <div className="overflow-x-auto overflow-y-auto max-h-[600px] bg-white/50 dark:bg-black/20">
-             <table className="w-full text-left text-sm border-collapse min-w-max">
-               <thead>
-                 <tr>
-                   {editCols.map((c: string) => (
-                     <th key={c} className="px-4 py-3 font-medium uppercase tracking-wider text-[10px] text-neutral-400 border-b border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 sticky top-0 z-10 whitespace-nowrap">
-                       {c}
-                     </th>
-                   ))}
-                 </tr>
-               </thead>
-               <tbody className="divide-y divide-black/5 dark:divide-white/5">
-                 {editRows.map((row: any, i: number) => (
-                   <tr key={i} className="hover:bg-amber-500/5 transition-colors group">
-                     {editCols.map((c: string) => (
-                       <td 
-                         key={c} 
-                         className="px-4 py-2 font-light text-neutral-700 dark:text-neutral-300 outline-none focus:bg-amber-500/10 focus:ring-1 focus:ring-amber-500/50 transition-colors whitespace-nowrap max-w-[200px] truncate" 
-                         contentEditable 
-                         suppressContentEditableWarning
-                       >
-                         {String(row[c] || '')}
-                       </td>
-                     ))}
-                   </tr>
-                 ))}
-                 {editRows.length === 0 && (
-                   <tr><td colSpan={editCols.length || 1} className="px-6 py-8 text-center text-neutral-400 font-light">No rows found in analyzed sample.</td></tr>
-                 )}
-               </tbody>
-             </table>
+             {((analysisData?.analysis?.sample_tables?.[currentEditorTarget] || []).length === 0) ? (
+                      <div className="text-sm font-medium text-center text-neutral-400 py-8">No rows found in analyzed sample.</div>
+                    ) : (
+                      <table className="w-full text-left text-sm whitespace-nowrap">
+                        <thead className="bg-[#0059B5]/5 dark:bg-[#0059B5]/10">
+                          <tr>
+                            <th className="px-4 py-3 font-medium text-neutral-500 uppercase tracking-wider text-xs w-16 text-center border-b border-black/5 dark:border-white/5">Row</th>
+                            {Object.keys((analysisData.analysis.sample_tables[currentEditorTarget] as any[])[0]).map(k => (
+                              <th key={k} className="px-4 py-3 font-semibold text-neutral-700 dark:text-neutral-300 border-b border-black/5 dark:border-white/5">{k}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-black/5 dark:divide-white/5 font-mono">
+                          {(analysisData.analysis.sample_tables[currentEditorTarget] as any[]).map((row, i) => (
+                            <tr key={i} className="hover:bg-amber-500/5 transition-colors group">
+                              <td className="px-4 py-2 text-center text-neutral-500 dark:text-neutral-400 border-r border-black/5 dark:border-white/5">{i + 1}</td>
+                              {Object.entries(row).map(([key, value]: [string, any]) => (
+                                <td 
+                                  key={key} 
+                                  className="px-4 py-2 font-light text-neutral-700 dark:text-neutral-300 outline-none focus:bg-amber-500/10 focus:ring-1 focus:ring-amber-500/50 transition-colors whitespace-nowrap max-w-[200px] truncate" 
+                                  contentEditable 
+                                  suppressContentEditableWarning
+                                >
+                                  {String(value || '')}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
            </div>
         </GlassCard>
             </div>
@@ -689,10 +921,10 @@ function DataView({ activeTab, analysisData }: { activeTab: string, analysisData
 // MAIN APP
 // ------------------------------------
 export default function App() {
-  const [ingestionState, setIngestionState] = useState<'idle' | 'processing' | 'db_form' | 'done'>('idle');
-  const [activeTab, setActiveTab] = useState('overview');
+  const [ingestionState, setIngestionState] = useState<'idle'|'uploading'|'db_form'|'processing'|'done'>('idle');
   const [analysisData, setAnalysisData] = useState<any>(null);
-
+  const [activeTab, setActiveTab] = useState<string>('overview');
+  const [navLayout, setNavLayout] = useState<'horizontal' | 'vertical'>('horizontal');
   const [dragActive, setDragActive] = useState(false);
   
   const handleDrag = (e: React.DragEvent) => {
@@ -781,21 +1013,21 @@ export default function App() {
          <div className="absolute top-[40%] right-[-10%] w-[50vw] h-[50vw] rounded-full bg-indigo-300/10 dark:bg-indigo-600/10 blur-[140px]" />
       </div>
 
-      <TopNav activeTab={ingestionState === 'done' ? activeTab : undefined} setActiveTab={setActiveTab} />
-
-      <main className="relative z-10 pt-20 pb-20 px-6 max-w-5xl mx-auto w-full min-h-[90vh] flex flex-col items-center">
+      <TopNav 
+        activeTab={ingestionState === 'done' ? activeTab : undefined} 
+        setActiveTab={setActiveTab} 
+        resetState={() => {
+          setIngestionState('idle');
+          setAnalysisData(null);
+          setActiveTab('overview');
+        }}
+        navLayout={navLayout}
+        setNavLayout={setNavLayout}
+      />
+      
+      <main className={clsx("relative z-10 pt-20 pb-20 px-6 max-w-5xl mx-auto w-full min-h-[90vh] flex flex-col items-center transition-all duration-300", navLayout === 'vertical' && ingestionState === 'done' ? "md:pl-52" : "")}>
         {ingestionState === 'done' ? (
            <div className="w-full relative min-h-full">
-             <button 
-                onClick={() => {
-                  setIngestionState('idle'); 
-                  setAnalysisData(null); 
-                  setActiveTab('overview');
-                }} 
-                className="absolute shrink-0 top-32 -right-8 p-3 rounded-full bg-white/40 dark:bg-black/30 hover:bg-white/60 dark:hover:bg-black/50 transition-colors shadow-sm hidden lg:block group"
-             >
-                <ArrowRight className="w-5 h-5 text-neutral-600 dark:text-neutral-400 rotate-180 group-hover:-translate-x-1 transition-transform" />
-             </button>
              <ErrorBoundary>
                <DataView activeTab={activeTab === 'editor' ? 'editor' : activeTab} analysisData={analysisData} />
              </ErrorBoundary>
@@ -914,7 +1146,7 @@ export default function App() {
                      <div className="w-16 h-16 rounded-full bg-white/50 dark:bg-black/50 backdrop-blur-xl border border-white/60 dark:border-white/10 flex items-center justify-center shadow-lg relative overflow-hidden mb-6">
                         <Loader2 className="w-8 h-8 text-[#0059B5] animate-spin absolute" />
                      </div>
-                    <p className="text-neutral-500 dark:text-neutral-400 text-xl font-light tracking-wide">Synthesizing intelligence...</p>
+                    <CycleText />
                   </motion.div>
                 )}
               </AnimatePresence>

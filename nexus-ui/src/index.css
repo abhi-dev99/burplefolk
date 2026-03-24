@@ -7,6 +7,12 @@ html {
   overscroll-behavior-y: none;
 }
 
+html.reduced-motion * {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+
 body {
   overscroll-behavior-y: none;
 }

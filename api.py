@@ -59,6 +59,11 @@ async def analyze_csv(files: List[UploadFile] = File(...)):
         )
         
         import json
+        
+        # Calculate exact storage bytes for the overview UI instead of mathematical estimations
+        storage_bytes = sum(len(content) for content in file_map.values())
+        results["storage_bytes"] = storage_bytes
+        
         # Pop pandas df's that crash json
         tables_df = results.pop('tables', {})
         sample_tables = {}
