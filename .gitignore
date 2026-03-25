@@ -12,3 +12,4 @@ test.sqlite
 00-codeapex-ftw/
 api_fix.py
 skills-lock.json
+.streamlit/secrets.toml
