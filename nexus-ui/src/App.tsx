@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Database, Loader2, ArrowRight, Table2, LayoutGrid, FileText, CheckCircle2, ChevronRight, BarChart4, ChevronRight as ChevronRightIcon, RefreshCw, Layers, ListTree, Check, Settings, Code, Image as ImageIcon, ShieldCheck, Share2, BrainCircuit, ActivitySquare, Download, FileUp
+  Database, Loader2, ArrowRight, Table2, LayoutGrid, FileText, CheckCircle2, ChevronRight, BarChart4, ChevronRight as ChevronRightIcon, RefreshCw, Layers, ListTree, Check, Settings, Code, Image as ImageIcon, ShieldCheck, Share2, BrainCircuit, ActivitySquare, Download, FileUp, Mail
 } from 'lucide-react';
 import { toSvg } from 'html-to-image';
 import clsx from 'clsx';
@@ -69,6 +69,8 @@ function SettingsMenu({ navLayout, setNavLayout }: { navLayout: string, setNavLa
     <div className="relative">
       <button 
         onClick={() => setIsOpen(!isOpen)}
+        title="Open settings"
+        aria-label="Open settings"
         className="w-10 h-10 flex items-center justify-center rounded-full bg-black/5 hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/20 transition-colors pointer-events-auto"
       >
         <Settings className="w-5 h-5 text-neutral-600 dark:text-neutral-300" />
@@ -151,7 +153,7 @@ function SettingsMenu({ navLayout, setNavLayout }: { navLayout: string, setNavLa
   );
 }
 
-function TopNav({ activeTab, setActiveTab, resetState, navLayout, setNavLayout }: { activeTab?: string, setActiveTab?: (t: string) => void, resetState?: () => void, navLayout: string, setNavLayout: (m: 'vertical' | 'horizontal') => void }) {
+function TopNav({ activeTab, setActiveTab, resetState, navLayout, setNavLayout, onAgentClick }: { activeTab?: string, setActiveTab?: (t: string) => void, resetState?: () => void, navLayout: string, setNavLayout: (m: 'vertical' | 'horizontal') => void, onAgentClick?: () => void }) {
   const navItems = [
     { id: 'overview', label: 'Overview', icon: LayoutGrid },
     { id: 'schema', label: 'Schema', icon: Table2 },
@@ -208,6 +210,12 @@ function TopNav({ activeTab, setActiveTab, resetState, navLayout, setNavLayout }
           </div>
         )}
         <div className={clsx("flex items-center gap-3", navLayout === 'vertical' && "mt-auto pt-6 border-t border-black/5 dark:border-white/5 w-full justify-start pl-2")}>
+          <button
+            onClick={onAgentClick}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 hover:bg-blue-500/20 text-blue-700 dark:text-blue-300 text-sm font-medium transition-colors"
+          >
+            <Mail className="w-4 h-4" /> Agent
+          </button>
           <button 
             onClick={resetState}
             className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 text-sm font-medium transition-colors"
@@ -964,6 +972,124 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<string>('overview');
   const [navLayout, setNavLayout] = useState<'horizontal' | 'vertical'>('horizontal');
   const [dragActive, setDragActive] = useState(false);
+  const [showAgentPanel, setShowAgentPanel] = useState(false);
+  const [agentBusy, setAgentBusy] = useState(false);
+  const [agentError, setAgentError] = useState<string | null>(null);
+  const [agentResult, setAgentResult] = useState<any>(null);
+  const [agentAuth, setAgentAuth] = useState<{ ok: boolean; email: string; message: string }>({
+    ok: false,
+    email: '',
+    message: '',
+  });
+  const [agentForm, setAgentForm] = useState({
+    firebaseEmail: '',
+    firebasePassword: '',
+    firebaseApiKey: '',
+    firebaseAuthDomain: '',
+    firebaseProjectId: '',
+    firebaseStorageBucket: '',
+    agentEmail: '',
+    gmailAppPassword: '',
+    imapHost: 'imap.gmail.com',
+    smtpHost: 'smtp.gmail.com',
+    smtpPort: '587',
+    maxMessages: '5',
+    aiProvider: 'ollama',
+    ollamaEndpoint: 'http://localhost:11434',
+    ollamaModel: 'llama3:latest',
+    geminiApiKey: '',
+    geminiModel: 'gemini-2.0-flash',
+  });
+
+  useEffect(() => {
+    const loadAgentConfig = async () => {
+      try {
+        const response = await axios.get(`${API_BASE}/agent/runtime-config`);
+        const defaultAgentEmail = String(response?.data?.default_agent_email || '').trim();
+        if (!defaultAgentEmail) {
+          return;
+        }
+
+        setAgentForm((prev) => ({
+          ...prev,
+          firebaseEmail: prev.firebaseEmail || defaultAgentEmail,
+          agentEmail: prev.agentEmail || defaultAgentEmail,
+        }));
+      } catch {
+        // Keep defaults when runtime config endpoint is unavailable.
+      }
+    };
+
+    loadAgentConfig();
+  }, []);
+
+  const handleAgentLogin = async () => {
+    setAgentBusy(true);
+    setAgentError(null);
+    setAgentResult(null);
+
+    try {
+      const response = await axios.post(`${API_BASE}/agent/firebase-login`, {
+        email: agentForm.firebaseEmail,
+        password: agentForm.firebasePassword,
+        firebase_api_key: agentForm.firebaseApiKey,
+        firebase_auth_domain: agentForm.firebaseAuthDomain,
+        firebase_project_id: agentForm.firebaseProjectId,
+        firebase_storage_bucket: agentForm.firebaseStorageBucket,
+      });
+
+      const ok = Boolean(response?.data?.ok);
+      const message = String(response?.data?.message || (ok ? 'Agent login succeeded.' : 'Agent login failed.'));
+      const email = String(response?.data?.email || agentForm.firebaseEmail || '');
+      setAgentAuth({ ok, email, message });
+      if (!ok) {
+        throw new Error(message);
+      }
+      setAgentForm((prev) => ({ ...prev, agentEmail: email || prev.agentEmail }));
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail;
+      setAgentError(String(detail || err?.message || 'Agent login failed.'));
+      setAgentAuth((prev) => ({ ...prev, ok: false }));
+    } finally {
+      setAgentBusy(false);
+    }
+  };
+
+  const handleAgentProcessOnce = async () => {
+    const sampleTables = analysisData?.analysis?.sample_tables || {};
+    if (!sampleTables || Object.keys(sampleTables).length === 0) {
+      setAgentError('Run analysis first so the agent has table context to answer emails.');
+      return;
+    }
+
+    setAgentBusy(true);
+    setAgentError(null);
+    setAgentResult(null);
+
+    try {
+      const response = await axios.post(`${API_BASE}/agent/process-once`, {
+        sample_tables: sampleTables,
+        agent_email: agentForm.agentEmail,
+        gmail_app_password: agentForm.gmailAppPassword,
+        imap_host: agentForm.imapHost,
+        smtp_host: agentForm.smtpHost,
+        smtp_port: Number(agentForm.smtpPort || '587'),
+        max_messages_per_cycle: Number(agentForm.maxMessages || '5'),
+        ai_provider: agentForm.aiProvider,
+        ollama_endpoint: agentForm.ollamaEndpoint,
+        ollama_model: agentForm.ollamaModel,
+        gemini_api_key: agentForm.geminiApiKey,
+        gemini_model: agentForm.geminiModel,
+      });
+
+      setAgentResult(response?.data || {});
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail;
+      setAgentError(String(detail || err?.message || 'Agent inbox processing failed.'));
+    } finally {
+      setAgentBusy(false);
+    }
+  };
   
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -1061,7 +1187,189 @@ export default function App() {
         }}
         navLayout={navLayout}
         setNavLayout={setNavLayout}
+        onAgentClick={() => setShowAgentPanel(true)}
       />
+
+      <AnimatePresence>
+        {showAgentPanel && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/35 z-[70]"
+              onClick={() => setShowAgentPanel(false)}
+            />
+            <motion.aside
+              initial={{ x: 460, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: 460, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 220, damping: 26 }}
+              className="fixed right-0 top-0 h-full w-full max-w-md z-[80] bg-white/95 dark:bg-[#0f1115]/96 backdrop-blur-xl border-l border-black/10 dark:border-white/10 shadow-2xl p-6 overflow-y-auto"
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-medium text-neutral-900 dark:text-white">Email Agent</h3>
+                <button
+                  onClick={() => setShowAgentPanel(false)}
+                  className="px-3 py-1 rounded-lg text-sm bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="space-y-5">
+                <div className="p-4 rounded-xl border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/5">
+                  <h4 className="text-sm font-semibold uppercase tracking-wider text-neutral-500 mb-3">1. Establish Agent</h4>
+                  <div className="space-y-3">
+                    <input
+                      placeholder="Firebase login email"
+                      value={agentForm.firebaseEmail}
+                      onChange={(e) => setAgentForm((prev) => ({ ...prev, firebaseEmail: e.target.value }))}
+                      className="w-full p-3 rounded-lg bg-white dark:bg-black/30 border border-black/10 dark:border-white/10"
+                    />
+                    <input
+                      type="password"
+                      placeholder="Firebase login password"
+                      value={agentForm.firebasePassword}
+                      onChange={(e) => setAgentForm((prev) => ({ ...prev, firebasePassword: e.target.value }))}
+                      className="w-full p-3 rounded-lg bg-white dark:bg-black/30 border border-black/10 dark:border-white/10"
+                    />
+                    <button
+                      onClick={handleAgentLogin}
+                      disabled={agentBusy || !agentForm.firebaseEmail || !agentForm.firebasePassword}
+                      className="w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-medium"
+                    >
+                      {agentBusy ? 'Authenticating...' : 'Authenticate Agent'}
+                    </button>
+                    {agentAuth.message && (
+                      <div className={clsx('text-xs', agentAuth.ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+                        {agentAuth.message}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-xl border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/5">
+                  <h4 className="text-sm font-semibold uppercase tracking-wider text-neutral-500 mb-3">2. Configure Inbox Agent</h4>
+                  <div className="space-y-3">
+                    <input
+                      placeholder="Agent Gmail"
+                      value={agentForm.agentEmail}
+                      onChange={(e) => setAgentForm((prev) => ({ ...prev, agentEmail: e.target.value }))}
+                      className="w-full p-3 rounded-lg bg-white dark:bg-black/30 border border-black/10 dark:border-white/10"
+                    />
+                    <input
+                      type="password"
+                      placeholder="Gmail App Password"
+                      value={agentForm.gmailAppPassword}
+                      onChange={(e) => setAgentForm((prev) => ({ ...prev, gmailAppPassword: e.target.value }))}
+                      className="w-full p-3 rounded-lg bg-white dark:bg-black/30 border border-black/10 dark:border-white/10"
+                    />
+                    <div className="grid grid-cols-2 gap-3">
+                      <input
+                        placeholder="IMAP host"
+                        value={agentForm.imapHost}
+                        onChange={(e) => setAgentForm((prev) => ({ ...prev, imapHost: e.target.value }))}
+                        className="w-full p-3 rounded-lg bg-white dark:bg-black/30 border border-black/10 dark:border-white/10"
+                      />
+                      <input
+                        placeholder="SMTP host"
+                        value={agentForm.smtpHost}
+                        onChange={(e) => setAgentForm((prev) => ({ ...prev, smtpHost: e.target.value }))}
+                        className="w-full p-3 rounded-lg bg-white dark:bg-black/30 border border-black/10 dark:border-white/10"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <input
+                        placeholder="SMTP port"
+                        value={agentForm.smtpPort}
+                        onChange={(e) => setAgentForm((prev) => ({ ...prev, smtpPort: e.target.value }))}
+                        className="w-full p-3 rounded-lg bg-white dark:bg-black/30 border border-black/10 dark:border-white/10"
+                      />
+                      <input
+                        placeholder="Max emails per cycle"
+                        value={agentForm.maxMessages}
+                        onChange={(e) => setAgentForm((prev) => ({ ...prev, maxMessages: e.target.value }))}
+                        className="w-full p-3 rounded-lg bg-white dark:bg-black/30 border border-black/10 dark:border-white/10"
+                      />
+                    </div>
+
+                    <select
+                      value={agentForm.aiProvider}
+                      onChange={(e) => setAgentForm((prev) => ({ ...prev, aiProvider: e.target.value }))}
+                      title="Agent AI provider"
+                      aria-label="Agent AI provider"
+                      className="w-full p-3 rounded-lg bg-white dark:bg-black/30 border border-black/10 dark:border-white/10"
+                    >
+                      <option value="ollama">Ollama</option>
+                      <option value="gemini">Gemini</option>
+                    </select>
+
+                    {agentForm.aiProvider === 'ollama' ? (
+                      <>
+                        <input
+                          placeholder="Ollama endpoint"
+                          value={agentForm.ollamaEndpoint}
+                          onChange={(e) => setAgentForm((prev) => ({ ...prev, ollamaEndpoint: e.target.value }))}
+                          className="w-full p-3 rounded-lg bg-white dark:bg-black/30 border border-black/10 dark:border-white/10"
+                        />
+                        <input
+                          placeholder="Ollama model"
+                          value={agentForm.ollamaModel}
+                          onChange={(e) => setAgentForm((prev) => ({ ...prev, ollamaModel: e.target.value }))}
+                          className="w-full p-3 rounded-lg bg-white dark:bg-black/30 border border-black/10 dark:border-white/10"
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <input
+                          type="password"
+                          placeholder="Gemini API key"
+                          value={agentForm.geminiApiKey}
+                          onChange={(e) => setAgentForm((prev) => ({ ...prev, geminiApiKey: e.target.value }))}
+                          className="w-full p-3 rounded-lg bg-white dark:bg-black/30 border border-black/10 dark:border-white/10"
+                        />
+                        <input
+                          placeholder="Gemini model"
+                          value={agentForm.geminiModel}
+                          onChange={(e) => setAgentForm((prev) => ({ ...prev, geminiModel: e.target.value }))}
+                          className="w-full p-3 rounded-lg bg-white dark:bg-black/30 border border-black/10 dark:border-white/10"
+                        />
+                      </>
+                    )}
+
+                    <button
+                      onClick={handleAgentProcessOnce}
+                      disabled={agentBusy || !agentForm.agentEmail || !agentForm.gmailAppPassword}
+                      className="w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-medium"
+                    >
+                      {agentBusy ? 'Processing Inbox...' : 'Process Inbox Once'}
+                    </button>
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                      The React agent uses analyzed sample tables as query context. Run analysis first.
+                    </p>
+                  </div>
+                </div>
+
+                {agentError && (
+                  <div className="text-sm text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900 rounded-lg p-3">
+                    {agentError}
+                  </div>
+                )}
+
+                {agentResult && (
+                  <div className="text-sm text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900 rounded-lg p-3">
+                    Processed: {String(agentResult.processed || 0)} | Replied: {String(agentResult.replied || 0)} | Skipped: {String(agentResult.skipped || 0)}
+                    {Array.isArray(agentResult.failures) && agentResult.failures.length > 0 && (
+                      <div className="mt-2 text-rose-600 dark:text-rose-400">Failures: {agentResult.failures.join(' | ')}</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
       
       <main className={clsx("relative z-10 pt-20 pb-20 px-6 max-w-5xl mx-auto w-full min-h-[90vh] flex flex-col items-center transition-all duration-300", navLayout === 'vertical' && ingestionState === 'done' ? "md:pl-52" : "")}>
         {ingestionState === 'done' ? (
@@ -1145,6 +1453,8 @@ export default function App() {
                         <select 
                           value={dbForm.db_type}
                           onChange={(e) => setDbForm({...dbForm, db_type: e.target.value})}
+                          title="Database engine"
+                          aria-label="Database engine"
                           className="w-full p-4 rounded-xl border-0 ring-1 ring-black/5 dark:ring-white/10 bg-white/50 dark:bg-black/50 text-base font-light focus:outline-none focus:ring-2 focus:ring-[#0059B5] dark:text-white transition-shadow"
                         >
                           <option value="postgresql">PostgreSQL</option>

@@ -82,6 +82,18 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+## Streamlit Agent Login Config (Firebase)
+
+The Streamlit prototype reads Firebase runtime config from environment variables or Streamlit secrets (instead of entering these values in the UI).
+
+Use `.streamlit/secrets.toml` (copy from `.streamlit/secrets.toml.example`) with:
+
+- `FIREBASE_API_KEY`
+- `FIREBASE_AUTH_DOMAIN`
+- `FIREBASE_PROJECT_ID`
+- `FIREBASE_STORAGE_BUCKET`
+- `AGENT_DEFAULT_EMAIL` (optional)
+
 ## Optional: Local AI Copilot (Free)
 
 Install Ollama and run a local model:
