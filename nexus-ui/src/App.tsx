@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Database, FileUp, ListTree, ActivitySquare, ShieldCheck, Share2, BrainCircuit, Moon, Sun, ArrowRight, Loader2, Download, ArrowUpDown, Key } from 'lucide-react';
+import { Database, FileUp, ListTree, ActivitySquare, ShieldCheck, Share2, BrainCircuit, Moon, Sun, ArrowRight, Loader2, Download } from 'lucide-react';
 import clsx from 'clsx';
 import mermaid from 'mermaid';
 import axios from 'axios';
 import ERDiagram from './components/ERDiagram';
 import ErrorBoundary from './components/ErrorBoundary';
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = (import.meta.env.VITE_API_BASE_URL as string) || 'http://localhost:8000/api';
 
 // ------------------------------------
 // UI COMPONENTS

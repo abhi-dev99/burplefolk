@@ -82,6 +82,66 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+## Deploy to Google Cloud (Backend API + React UI)
+
+This setup deploys:
+
+- Backend API (`api.py`) to Cloud Run service `burplefolk-api`
+- React frontend (`nexus-ui`) to Cloud Run service `burplefolk-frontend`
+
+Keep this work on a separate branch (for example `deploy`) so `main` stays safe.
+
+### 1) Prerequisites
+
+```bash
+gcloud auth login
+gcloud config set project YOUR_PROJECT_ID
+gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com
+```
+
+### 2) Create Artifact Registry repo (one-time)
+
+```bash
+gcloud artifacts repositories create burplefolk \
+  --repository-format=docker \
+  --location=us-central1 \
+  --description="Docker images for Burplefolk services"
+```
+
+### 3) Deploy backend API first
+
+```bash
+gcloud builds submit --config cloudbuild.api.yaml
+```
+
+Get the backend URL:
+
+```bash
+gcloud run services describe burplefolk-api --region us-central1 --format='value(status.url)'
+```
+
+Assume the URL is `https://burplefolk-api-xxxxx-uc.a.run.app`.
+
+### 4) Deploy React frontend with backend URL injected
+
+```bash
+gcloud builds submit \
+  --config cloudbuild.frontend.yaml \
+  --substitutions=_VITE_API_BASE_URL="https://burplefolk-api-xxxxx-uc.a.run.app/api"
+```
+
+### 5) Open frontend
+
+```bash
+gcloud run services describe burplefolk-frontend --region us-central1 --format='value(status.url)'
+```
+
+### Notes
+
+- Frontend API URL is set at build time via `VITE_API_BASE_URL`.
+- You can redeploy frontend anytime with a new API URL using the same command.
+- Keep `.streamlit/secrets.toml` local and never commit credentials.
+
 ## Streamlit Agent Login Config (Firebase)
 
 The Streamlit prototype reads Firebase runtime config from environment variables or Streamlit secrets (instead of entering these values in the UI).

@@ -4,3 +4,6 @@ streamlit
 pyvis
 requests
 sqlalchemy
+fastapi
+uvicorn
+python-multipart

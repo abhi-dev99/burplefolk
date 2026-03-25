@@ -1,0 +1,36 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - nexus-ui/Dockerfile
+      - -t
+      - us-central1-docker.pkg.dev/$PROJECT_ID/burplefolk/burplefolk-frontend:$BUILD_ID
+      - --build-arg
+      - VITE_API_BASE_URL=${_VITE_API_BASE_URL}
+      - nexus-ui
+
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - us-central1-docker.pkg.dev/$PROJECT_ID/burplefolk/burplefolk-frontend:$BUILD_ID
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - burplefolk-frontend
+      - --image
+      - us-central1-docker.pkg.dev/$PROJECT_ID/burplefolk/burplefolk-frontend:$BUILD_ID
+      - --region
+      - us-central1
+      - --platform
+      - managed
+      - --allow-unauthenticated
+
+substitutions:
+  _VITE_API_BASE_URL: https://burplefolk-api-REPLACE_WITH_HASH-uc.a.run.app/api
+
+options:
+  logging: CLOUD_LOGGING_ONLY

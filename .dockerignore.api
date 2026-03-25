@@ -1,0 +1,13 @@
+.git
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+nexus-ui/node_modules/
+node_modules/
+.streamlit/secrets.toml
+outputs/
+testing/
