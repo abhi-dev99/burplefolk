@@ -1,6 +1,7 @@
 import json
 import re
 from datetime import datetime, timezone
+from io import BytesIO
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -9,7 +10,6 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from nexus.ai import (
-    generate_ai_brief,
     ollama_get_models,
     test_gemini_connection,
     test_ollama_connection,
@@ -18,6 +18,7 @@ from nexus.analysis import run_analysis
 from nexus.audit import audit_commit, audit_load
 from nexus.ingestion import format_db_connection_error, test_database_connection
 from nexus.models import APP_TITLE, DBConnectionConfig
+from nexus.orchestration import orchestrate_llm_task
 from nexus.provisioning import provision_mysql_from_dictionary, test_mysql_connection
 
 
@@ -88,6 +89,211 @@ def _svg_to_png_bytes(svg_markup: str) -> Optional[bytes]:
         return cairosvg.svg2png(bytestring=svg_markup.encode("utf-8"))
     except Exception:
         return None
+
+
+def _build_enterprise_pdf_report(
+    analysis: Dict,
+    ai_brief: str,
+    dictionary_df: pd.DataFrame,
+    relationship_df: pd.DataFrame,
+    actor: str,
+) -> Tuple[Optional[bytes], Optional[str]]:
+    try:
+        from reportlab.lib import colors  # type: ignore
+        from reportlab.lib.pagesizes import A4  # type: ignore
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet  # type: ignore
+        from reportlab.lib.units import mm  # type: ignore
+        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle  # type: ignore
+    except Exception:
+        return None, "PDF export requires reportlab. Install with: pip install reportlab"
+
+    table_profiles = analysis.get("table_profiles", []) if isinstance(analysis.get("table_profiles"), list) else []
+    relationships = analysis.get("relationships", []) if isinstance(analysis.get("relationships"), list) else []
+
+    high_conf = [r for r in relationships if float(r.get("confidence", 0) or 0) >= 0.85]
+    mid_conf = [r for r in relationships if 0.70 <= float(r.get("confidence", 0) or 0) < 0.85]
+    low_conf = [r for r in relationships if float(r.get("confidence", 0) or 0) < 0.70]
+
+    top_risks = sorted(
+        table_profiles,
+        key=lambda x: float(x.get("quality_score", 0) or 0),
+    )[:8]
+
+    role_counts: Dict[str, int] = {}
+    if not dictionary_df.empty and "role" in dictionary_df.columns:
+        for role, count in dictionary_df["role"].fillna("unknown").value_counts().items():
+            role_counts[str(role)] = int(count)
+
+    clean_brief = str(ai_brief or "").strip()
+    clean_brief = re.sub(r"\*\*(.*?)\*\*", r"\1", clean_brief)
+    clean_brief = re.sub(r"`([^`]+)`", r"\1", clean_brief)
+    clean_brief = re.sub(r"^#+\s*", "", clean_brief, flags=re.M)
+    if not clean_brief:
+        clean_brief = "AI brief is not available for this run."
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=14 * mm,
+        rightMargin=14 * mm,
+        topMargin=14 * mm,
+        bottomMargin=14 * mm,
+        title="Nexus Intelligence Executive Report",
+    )
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "ReportTitle",
+        parent=styles["Title"],
+        fontName="Helvetica-Bold",
+        fontSize=18,
+        leading=22,
+        textColor=colors.HexColor("#0F172A"),
+        spaceAfter=8,
+    )
+    section_style = ParagraphStyle(
+        "SectionHeader",
+        parent=styles["Heading2"],
+        fontName="Helvetica-Bold",
+        fontSize=12,
+        leading=15,
+        textColor=colors.HexColor("#1E3A8A"),
+        spaceBefore=8,
+        spaceAfter=5,
+    )
+    body_style = ParagraphStyle(
+        "Body",
+        parent=styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=9,
+        leading=12,
+        textColor=colors.HexColor("#111827"),
+        spaceAfter=3,
+    )
+
+    story = []
+    story.append(Paragraph("Nexus Intelligence | Executive Data Intelligence Report", title_style))
+    story.append(Paragraph("Enterprise-grade schema, quality, and governance assessment", body_style))
+    story.append(Spacer(1, 4))
+
+    summary_rows = [
+        ["Generated at", str(analysis.get("generated_at", "n/a"))],
+        ["Actor", actor or "n/a"],
+        ["Source type", str(analysis.get("source_type", "n/a"))],
+        ["Tables analyzed", str(len(table_profiles))],
+        ["Relationships inferred", str(len(relationships))],
+        ["Average quality score", str(analysis.get("avg_quality_score", "n/a"))],
+        ["Relationship confidence", f"high={len(high_conf)}, mid={len(mid_conf)}, low={len(low_conf)}"],
+    ]
+    summary_table = Table(summary_rows, colWidths=[42 * mm, 134 * mm])
+    summary_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#E2E8F0")),
+                ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#111827")),
+                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+                ("FONTNAME", (1, 0), (1, -1), "Helvetica"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#94A3B8")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
+    story.append(summary_table)
+
+    story.append(Paragraph("Top Risk Tables", section_style))
+    if top_risks:
+        risk_rows = [["Table", "Quality", "Completeness", "Consistency", "Issues", "Duplicate PK"]]
+        for item in top_risks:
+            risk_rows.append(
+                [
+                    str(item.get("table", "unknown")),
+                    str(item.get("quality_score", "n/a")),
+                    str(item.get("completeness_score", "n/a")),
+                    str(item.get("consistency_score", "n/a")),
+                    str(len(item.get("issues", []))) if isinstance(item.get("issues"), list) else "0",
+                    str(item.get("duplicate_pk_records", "0")),
+                ]
+            )
+        risk_table = Table(risk_rows, colWidths=[34 * mm, 20 * mm, 26 * mm, 24 * mm, 20 * mm, 24 * mm])
+        risk_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E3A8A")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 8),
+                    ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#CBD5E1")),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.HexColor("#F8FAFC"), colors.HexColor("#EEF2FF")]),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ]
+            )
+        )
+        story.append(risk_table)
+    else:
+        story.append(Paragraph("No table-level risk data was available in this run.", body_style))
+
+    if role_counts:
+        story.append(Paragraph("Dictionary Role Distribution", section_style))
+        role_rows = [["Semantic role", "Column count"]]
+        for role, count in sorted(role_counts.items(), key=lambda kv: kv[1], reverse=True)[:12]:
+            role_rows.append([role, str(count)])
+        role_table = Table(role_rows, colWidths=[110 * mm, 66 * mm])
+        role_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0F766E")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#CBD5E1")),
+                    ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ]
+            )
+        )
+        story.append(role_table)
+
+    story.append(Paragraph("AI Executive Brief", section_style))
+    for block in [segment.strip() for segment in clean_brief.split("\n\n") if segment.strip()]:
+        story.append(Paragraph(block.replace("\n", "<br/>"), body_style))
+
+    if not relationship_df.empty:
+        story.append(Paragraph("Key Relationships (Top 20)", section_style))
+        rel_rows = [["Child", "Parent", "Type", "Confidence"]]
+        rel_sorted = relationship_df.copy()
+        if "confidence" in rel_sorted.columns:
+            rel_sorted = rel_sorted.sort_values("confidence", ascending=False)
+        for _, row in rel_sorted.head(20).iterrows():
+            rel_rows.append(
+                [
+                    f"{row.get('child_table', '?')}.{row.get('child_column', '?')}",
+                    f"{row.get('parent_table', '?')}.{row.get('parent_column', '?')}",
+                    str(row.get("relation_type", "many-to-one")),
+                    str(row.get("confidence", "n/a")),
+                ]
+            )
+        rel_table = Table(rel_rows, colWidths=[62 * mm, 62 * mm, 28 * mm, 24 * mm])
+        rel_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#334155")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 7.7),
+                    ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#CBD5E1")),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ]
+            )
+        )
+        story.append(rel_table)
+
+    doc.build(story)
+    return buffer.getvalue(), None
 
 
 def init_page() -> None:
@@ -774,21 +980,37 @@ def main() -> None:
         if st.button("Generate executive AI brief"):
             try:
                 with st.spinner("Generating AI brief..."):
-                    ai_text = generate_ai_brief(
-                        analysis,
-                        llm_model,
-                        ollama_endpoint,
-                        provider=ai_provider,
-                        api_key=gemini_api_key,
+                    orchestration_result = orchestrate_llm_task(
+                        analysis=analysis,
+                        task="executive_brief",
+                        provider_preference=ai_provider,
+                        fallback_provider=None,
+                        ollama_model=llm_model if ai_provider == "ollama" else "llama3:latest",
+                        ollama_endpoint=ollama_endpoint,
+                        gemini_model=llm_model if ai_provider == "gemini" else "gemini-2.0-flash",
+                        gemini_api_key=gemini_api_key,
                         timeout_seconds=ai_timeout_seconds,
                     )
-                    st.session_state["ai_brief"] = ai_text
+                    st.session_state["ai_orchestration"] = orchestration_result
+                    st.session_state["ai_brief"] = str(orchestration_result.get("output", "")).strip()
             except Exception as exc:
                 st.session_state["ai_brief"] = f"AI generation failed: {exc}"
+                st.session_state["ai_orchestration"] = {
+                    "status": "failed",
+                    "provider_used": "none",
+                    "model_used": "none",
+                    "warnings": [str(exc)],
+                    "attempts": [],
+                }
 
         existing = st.session_state.get("ai_brief", "Press 'Generate executive AI brief' to produce a strategy summary.")
         edited = st.text_area("Executive brief", value=existing, height=340)
         st.session_state["ai_brief"] = edited
+
+        orchestration_view = st.session_state.get("ai_orchestration")
+        if orchestration_view:
+            with st.expander("LLM orchestration details"):
+                st.json(orchestration_view)
 
     with export_tab:
         st.subheader("Export Package")
@@ -850,6 +1072,24 @@ def main() -> None:
                 mime="image/png",
                 use_container_width=True,
             )
+
+        pdf_bytes, pdf_error = _build_enterprise_pdf_report(
+            analysis=analysis,
+            ai_brief=st.session_state.get("ai_brief", ""),
+            dictionary_df=dict_export,
+            relationship_df=rel_export,
+            actor=actor,
+        )
+        if pdf_bytes:
+            st.download_button(
+                "Download Executive PDF Report",
+                data=pdf_bytes,
+                file_name="nexus_executive_report.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+            )
+        elif pdf_error:
+            st.info(pdf_error)
 
         st.markdown("**ER Diagram Code To Copy (Mermaid)**")
         st.code(analysis.get("mermaid", ""), language="mermaid")

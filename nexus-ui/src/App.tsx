@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Database, UploadCloud, Loader2, ArrowRight, Table2, LayoutGrid, AlertCircle, FileText, CheckCircle2, ChevronRight, BarChart4, ChevronRight as ChevronRightIcon, Play, RefreshCw, Layers, ListTree, Check, Settings, Code, Image as ImageIcon, ShieldCheck, Share2, BrainCircuit, ActivitySquare, Download, FileUp
+  Database, Loader2, ArrowRight, Table2, LayoutGrid, FileText, CheckCircle2, ChevronRight, BarChart4, ChevronRight as ChevronRightIcon, RefreshCw, Layers, ListTree, Check, Settings, Code, Image as ImageIcon, ShieldCheck, Share2, BrainCircuit, ActivitySquare, Download, FileUp
 } from 'lucide-react';
 import { toSvg } from 'html-to-image';
 import clsx from 'clsx';
@@ -245,7 +245,7 @@ function DataView({ activeTab, analysisData }: { activeTab: string, analysisData
         <table className="w-full text-left font-mono whitespace-nowrap">
            <thead className={"bg-" + color + "-500/5 dark:bg-" + color + "-500/10"}>
              <tr>
-               {entries.map(([k], i) => <th key={k} className={"px-4 py-3 text-[10px] font-bold uppercase tracking-widest border-b border-" + color + "-500/20 text-" + color + "-700 dark:text-" + color + "-400"}>{k}</th>)}
+               {entries.map(([k]) => <th key={k} className={"px-4 py-3 text-[10px] font-bold uppercase tracking-widest border-b border-" + color + "-500/20 text-" + color + "-700 dark:text-" + color + "-400"}>{k}</th>)}
              </tr>
            </thead>
            <tbody className="divide-y divide-black/5 dark:divide-white/5">
@@ -261,6 +261,8 @@ function DataView({ activeTab, analysisData }: { activeTab: string, analysisData
   const [aiPrompt, setAiPrompt] = useState('Generate a comprehensive executive brief addressing data completeness and consistency...');
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
   const [aiResponse, setAiResponse] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiMeta, setAiMeta] = useState<any>(null);
 
   const tables = useMemo(() => analysisData?.analysis?.table_profiles ? analysisData.analysis.table_profiles.map((p:any) => p.table) : [], [analysisData]);
   const [editorTarget, setEditorTarget] = useState<string | null>(null);
@@ -269,13 +271,42 @@ function DataView({ activeTab, analysisData }: { activeTab: string, analysisData
 
 
 
-  const handleAiAction = () => {
-     setIsGeneratingAi(true);
-     setTimeout(() => {
-        setAiResponse("### Executive Analyst Brief\n\n**Schema Overview**\nNexus has evaluated the relational telemetry. The core tables exhibit 95%+ structural consistency, but temporal cadence remains erratic in edge models.\n\n**Recommendations:**\n1. Enforce strict `NOT NULL` constraints on the `orders` bridge.\n2. Foreign keys between `stores` and `staffs` are highly confident (0.97), materialize this relationship explicitly.\n\n_Generated dynamically by localized Nexus Agent._");
+    const handleAiAction = async () => {
+      if (!analysisData?.analysis) {
+        setAiError("No analysis payload is available. Run analysis first.");
+        return;
+      }
+
+      setIsGeneratingAi(true);
+      setAiError(null);
+
+      try {
+        const response = await axios.post(`${API_BASE}/llm/orchestrate`, {
+         analysis: analysisData.analysis,
+         task: "executive_brief",
+         provider_preference: "ollama",
+         timeout_seconds: 120,
+        });
+
+        const payload = response?.data || {};
+        const output = String(payload.output || "").trim();
+
+        if (!output) {
+         throw new Error("LLM orchestration returned an empty response.");
+        }
+
+        setAiResponse(output);
+        setAiMeta(payload);
+      } catch (err: any) {
+        const detail = err?.response?.data?.detail;
+        const message = detail || err?.message || "Unknown orchestration error.";
+        setAiError(String(message));
+        setAiResponse(`### AI Orchestration Failed\n\n${String(message)}`);
+        setAiMeta(null);
+      } finally {
         setIsGeneratingAi(false);
-     }, 2000);
-  };
+      }
+    };
 
   useEffect(() => {
     if (activeTab === 'er' && analysisData?.er_diagram && mermaidRef.current) {
@@ -818,6 +849,16 @@ function DataView({ activeTab, analysisData }: { activeTab: string, analysisData
                     <BrainCircuit className="w-4 h-4" /> {isGeneratingAi ? "Generating..." : "Generate Analyst Brief"}
                  </button>
               </div>
+              {aiError && (
+                <div className="mt-3 text-xs text-rose-600 dark:text-rose-400">
+                  {aiError}
+                </div>
+              )}
+              {aiMeta && (
+                <div className="mt-3 text-xs text-neutral-500 dark:text-neutral-400">
+                  Provider: {String(aiMeta.provider_used || "unknown")} | Model: {String(aiMeta.model_used || "unknown")} | Status: {String(aiMeta.status || "unknown")}
+                </div>
+              )}
             </div>
             <div className="prose prose-neutral dark:prose-invert max-w-none text-base font-light leading-relaxed whitespace-pre-wrap border-t border-black/5 dark:border-white/5 pt-8 relative z-0">
               <div dangerouslySetInnerHTML={{ __html: (aiResponse || analysisData.ai_brief).replace(/### (.*?)\n/g, '<h3 class="text-xl font-medium text-purple-600 dark:text-purple-400 mb-2 mt-4">$1</h3>').replace(/\*\*(.*?)\*\*/g, '<strong class="font-medium text-neutral-900 dark:text-white">$1</strong>').replace(/`([^`]+)`/g, '<code class="bg-black/5 dark:bg-white/10 px-1.5 py-0.5 rounded text-sm font-mono text-purple-600 dark:text-purple-300">$1</code>') }} />
@@ -833,9 +874,6 @@ function DataView({ activeTab, analysisData }: { activeTab: string, analysisData
       {/* EDITOR */}
       <div className={clsx("animate-in fade-in duration-700 w-full mt-24 print:hidden", activeTab !== 'editor' && "hidden")}>
         {(() => {
-          const editRows = analysisData?.analysis?.sample_tables?.[currentEditorTarget] || [];
-          const editCols = editRows.length > 0 ? Object.keys(editRows[0]) : [];
-
           return (
             <div className="w-full">
         <h2 className="text-4xl font-light tracking-tight text-neutral-900 dark:text-white mb-8">Data <span className="font-medium text-amber-600 dark:text-amber-500">Editor</span></h2>

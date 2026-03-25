@@ -5,10 +5,11 @@ from typing import Dict, List
 
 import pandas as pd
 
-from nexus.ai import generate_ai_brief, ollama_get_models
+from nexus.ai import ollama_get_models
 from nexus.analysis import run_analysis
 from nexus.audit import audit_commit
 from nexus.models import DBConnectionConfig
+from nexus.orchestration import orchestrate_llm_task
 
 
 def _load_csv_files(csv_paths: List[str]) -> Dict[str, bytes]:
@@ -140,8 +141,19 @@ def cmd_analyze(args: argparse.Namespace) -> None:
         if not model:
             available = ollama_get_models(args.ollama_endpoint)
             model = available[0] if available else "llama3:latest"
-        print(f"\nGenerating AI brief with model: {model}")
-        ai_brief = generate_ai_brief(analysis, model, args.ollama_endpoint)
+        print(f"\nGenerating AI brief with orchestrator using model: {model}")
+        orchestrated = orchestrate_llm_task(
+            analysis=analysis,
+            task="executive_brief",
+            provider_preference="ollama",
+            fallback_provider=None,
+            ollama_model=model,
+            ollama_endpoint=args.ollama_endpoint,
+            gemini_model="gemini-2.0-flash",
+            gemini_api_key="",
+            timeout_seconds=120,
+        )
+        ai_brief = str(orchestrated.get("output", "")).strip()
         print("\n=== AI Brief ===")
         print(ai_brief)
 
@@ -167,7 +179,7 @@ def cmd_analyze(args: argparse.Namespace) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Nexus Intelligence Fabric CLI")
+    parser = argparse.ArgumentParser(description="Nexus Intelligence CLI")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_models = sub.add_parser("models", help="List local Ollama models")

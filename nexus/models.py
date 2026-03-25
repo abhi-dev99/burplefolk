@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-APP_TITLE = "NEXUS INTELLIGENCE FABRIC"
+APP_TITLE = "NEXUS INTELLIGENCE"
 AUDIT_FILE = "dbi_audit_ledger.json"
 
 

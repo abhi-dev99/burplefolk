@@ -1,4 +1,4 @@
-# Nexus Intelligence Fabric - Agent Handoff Context
+# Nexus Intelligence - Agent Handoff Context
 
 Last updated: 2026-03-16
 Workspace root: `c:\Users\abhi\burplefolk`

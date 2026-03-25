@@ -1,4 +1,4 @@
-# Nexus Intelligence Fabric
+# Nexus Intelligence
 
 Enterprise-grade Relational Database Intelligence Agent for hackathon execution.
 
@@ -113,7 +113,7 @@ Then keep endpoint as `http://localhost:11434` in the sidebar.
 
 ```text
 .
-├── app.py                 # Main Nexus Intelligence Fabric application
+├── app.py                 # Main Nexus Intelligence application
 ├── requirements.txt       # Runtime dependencies
 ├── dbi_audit_ledger.json  # Generated immutable analysis snapshots
 └── SY_SEM_3_DBMS_CP_NoSQL2SQL/  # Prior project assets (optional reuse)

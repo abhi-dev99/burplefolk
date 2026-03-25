@@ -4,3 +4,4 @@ streamlit
 pyvis
 requests
 sqlalchemy
+reportlab

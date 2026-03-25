@@ -79,29 +79,99 @@ def ollama_get_models(endpoint: str) -> List[str]:
 
 
 def _build_ai_brief_prompt(analysis: Dict) -> str:
-    top_tables = sorted(analysis["table_profiles"], key=lambda x: x["quality_score"])[:4]
-    issues = []
-    for t in top_tables:
-        issues.extend(t["issues"][:3])
+    table_profiles = analysis.get("table_profiles", []) if isinstance(analysis.get("table_profiles"), list) else []
+    relationships = analysis.get("relationships", []) if isinstance(analysis.get("relationships"), list) else []
+
+    source_type = analysis.get("source_type", "Unknown")
+    avg_quality = analysis.get("avg_quality_score", 0)
+
+    top_risk_tables = sorted(
+        table_profiles,
+        key=lambda x: float(x.get("quality_score", 0) or 0),
+    )[:5]
+    largest_tables = sorted(
+        table_profiles,
+        key=lambda x: int(x.get("estimated_total_rows", 0) or 0),
+        reverse=True,
+    )[:5]
+
+    high_conf_relationships = [r for r in relationships if float(r.get("confidence", 0) or 0) >= 0.85]
+    mid_conf_relationships = [r for r in relationships if 0.70 <= float(r.get("confidence", 0) or 0) < 0.85]
+    low_conf_relationships = [r for r in relationships if float(r.get("confidence", 0) or 0) < 0.70]
+
+    critical_issues = []
+    for table in top_risk_tables:
+        issues = table.get("issues", []) if isinstance(table.get("issues"), list) else []
+        critical_issues.extend(issues[:5])
+
+    largest_table_lines = []
+    for item in largest_tables:
+        largest_table_lines.append(
+            f"- {item.get('table', 'unknown')}: rows={item.get('estimated_total_rows', 0)}, "
+            f"cols={item.get('column_count', 0)}, quality={item.get('quality_score', 0)}"
+        )
+
+    risk_table_lines = []
+    for item in top_risk_tables:
+        risk_table_lines.append(
+            f"- {item.get('table', 'unknown')}: quality={item.get('quality_score', 0)}, "
+            f"completeness={item.get('completeness_score', 0)}, consistency={item.get('consistency_score', 0)}, "
+            f"temporal_bonus={item.get('temporal_bonus_points', 0)}, duplicate_pk_records={item.get('duplicate_pk_records', 0)}"
+        )
+
+    relationship_examples = []
+    for rel in relationships[:15]:
+        relationship_examples.append(
+            f"- {rel.get('child_table', '?')}.{rel.get('child_column', '?')} -> "
+            f"{rel.get('parent_table', '?')}.{rel.get('parent_column', '?')} "
+            f"(confidence={rel.get('confidence', 'n/a')})"
+        )
 
     return f"""
-You are an enterprise principal data architect.
-Summarize this relational database assessment for engineering leadership.
+You are a principal data architect and data platform reviewer preparing a board-ready technical assessment.
 
-Context:
-- Source type: {analysis['source_type']}
-- Tables: {len(analysis['table_profiles'])}
-- Relationships discovered: {len(analysis['relationships'])}
-- Average quality score: {analysis['avg_quality_score']}
+Your report must be extremely detailed, evidence-based, and useful for senior data engineers, architects, and governance leads.
 
-Critical issues:
-{chr(10).join('- ' + i for i in issues[:10]) if issues else '- No major issues detected in current sample.'}
+Non-negotiable rules:
+- Ground every claim in the provided analysis metrics.
+- Quantify impacts whenever possible (tables affected, confidence bands, severity levels).
+- If evidence is missing, explicitly state: "Insufficient evidence from sampled metadata."
+- Do not use vague language; provide concrete technical observations and actions.
 
-Output format:
-1) Executive Summary (max 5 bullets)
-2) Top Risks (max 5 bullets)
-3) 48-Hour Remediation Plan (max 5 bullets)
-4) 30-Day Data Governance Plan (max 5 bullets)
+Assessment context:
+- Source type: {source_type}
+- Tables analyzed: {len(table_profiles)}
+- Relationships inferred: {len(relationships)}
+- Average quality score: {avg_quality}
+- Relationship confidence split: high(>=0.85)={len(high_conf_relationships)}, mid(0.70-0.84)={len(mid_conf_relationships)}, low(<0.70)={len(low_conf_relationships)}
+
+Largest tables:
+{chr(10).join(largest_table_lines) if largest_table_lines else '- None'}
+
+Highest-risk tables:
+{chr(10).join(risk_table_lines) if risk_table_lines else '- None'}
+
+Critical issues detected:
+{chr(10).join('- ' + i for i in critical_issues[:20]) if critical_issues else '- No major issues detected in current sample.'}
+
+Sample relationships:
+{chr(10).join(relationship_examples) if relationship_examples else '- None'}
+
+Output format (Markdown with these exact section headings):
+1) Executive Summary
+2) Technical Findings by Domain (schema integrity, key design, referential confidence, quality anomalies)
+3) Risk Register (Severity, Probability, Blast Radius, Detection Signal, Mitigation)
+4) Data Contract and Governance Gaps
+5) 48-Hour Remediation Plan (with owner role and measurable acceptance criteria)
+6) 30-Day Hardening Plan (automations, monitors, controls)
+7) Confidence Notes and Known Uncertainties
+8) KPI Delta Forecast (what quality or reliability gains are expected after fixes)
+9) Validation SQL Pack (6-10 SQL checks to verify remediation)
+
+Style expectations:
+- Enterprise-grade, concise but deep.
+- Use short paragraphs, bullet lists, and mini tables where useful.
+- Avoid motivational phrasing; focus on technically rigorous recommendations.
 """
 
 
