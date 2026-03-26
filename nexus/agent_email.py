@@ -18,6 +18,21 @@ import pandas as pd
 
 _EVENT_LOG: Deque[Dict] = deque(maxlen=200)
 _EVENT_LOCK = threading.Lock()
+_REPLY_TIMESTAMPS: Deque[datetime] = deque()
+_RATE_LIMIT_WINDOW_SECONDS = 60
+_RATE_LIMIT_MAX_REPLIES = 3
+_CC_SUBJECT_KEYWORDS = [
+    "db query",
+    "nexus",
+    "shop",
+    "shops",
+    "order",
+    "orders",
+    "employee",
+    "employees",
+    "sales",
+    "revenue",
+]
 
 
 def _log_event(level: str, message: str, metadata: Optional[Dict] = None) -> None:
@@ -27,6 +42,12 @@ def _log_event(level: str, message: str, metadata: Optional[Dict] = None) -> Non
         "message": message,
         "metadata": metadata or {},
     }
+    # Mirror events to stdout so backend CLI can be used as a live monitor.
+    try:
+        meta_text = f" | meta={event['metadata']}" if event["metadata"] else ""
+        print(f"[agent-email][{event['level']}][{event['timestamp']}] {event['message']}{meta_text}", flush=True)
+    except Exception:
+        pass
     with _EVENT_LOCK:
         _EVENT_LOG.appendleft(event)
 
@@ -45,6 +66,13 @@ def firebase_email_password_login(
     password: str,
 ) -> Tuple[bool, str, Optional[Dict]]:
     import requests
+
+    if not str(firebase_api_key or "").strip():
+        return (
+            False,
+            "Firebase authentication failed: missing Firebase API key. Provide FIREBASE_API_KEY in backend env or set it in the Agent panel.",
+            None,
+        )
     
     try:
         url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={firebase_api_key}"
@@ -66,6 +94,8 @@ def firebase_email_password_login(
                     error_msg = error_detail['error'].get('message', error_msg)
         except Exception:
             pass
+        if "Method doesn't allow unregistered callers" in error_msg:
+            error_msg = "Firebase API key is missing or invalid for Identity Toolkit sign-in."
         return False, f"Firebase authentication failed: {error_msg}", None
     except Exception as exc:
         return False, f"Firebase authentication failed: {exc}", None
@@ -114,6 +144,109 @@ def _collect_reply_all_recipients(msg, agent_email: str) -> Tuple[List[str], Lis
     to_recipients = [to_email] if to_email and to_email != agent_email.lower() else []
     cc_recipients = [x for x in dedup if x not in to_recipients]
     return to_recipients, cc_recipients
+
+
+def _is_allowed_sender(sender_email: str, msg, agent_email: str, allowed_domain: str = "") -> bool:
+    sender = (sender_email or "").strip().lower()
+    if not sender:
+        return False
+
+    to_addresses = [a.strip().lower() for _, a in getaddresses([msg.get("To", "")]) if a.strip()]
+    cc_addresses = [a.strip().lower() for _, a in getaddresses([msg.get("Cc", "")]) if a.strip()]
+    agent_addr = (agent_email or "").strip().lower()
+
+    agent_in_to = agent_addr in to_addresses
+    agent_in_cc = agent_addr in cc_addresses
+
+    if not agent_in_to and not agent_in_cc:
+        return False
+
+    if agent_in_to:
+        return True
+
+    # Only allow CC traffic from same-domain senders.
+    if allowed_domain and sender.endswith("@" + allowed_domain.lower()):
+        return True
+
+    # For CC-only traffic, require a subject keyword to avoid random CC replies.
+    subject = str(msg.get("Subject", "")).strip().lower()
+    if subject and any(token in subject for token in _CC_SUBJECT_KEYWORDS):
+        return True
+
+    return False
+
+
+def _is_supported_business_query(question: str) -> bool:
+    q = (question or "").strip().lower()
+    if not q:
+        return False
+
+    allowed_tokens = [
+        "employee",
+        "employees",
+        "staff",
+        "headcount",
+        "sales",
+        "revenue",
+        "amount",
+        "orders",
+        "order",
+        "invoice",
+        "count",
+        "how many",
+        "last month",
+        "total",
+        "average",
+        "avg",
+    ]
+    blocked_tokens = [
+        "weather",
+        "joke",
+        "song",
+        "poem",
+        "story",
+        "movie",
+        "sports",
+        "politics",
+        "news",
+        "recipe",
+    ]
+
+    if any(tok in q for tok in blocked_tokens):
+        return False
+    return any(tok in q for tok in allowed_tokens)
+
+
+def _prune_and_count_recent_replies(now_utc: datetime) -> int:
+    cutoff = now_utc.timestamp() - _RATE_LIMIT_WINDOW_SECONDS
+    while _REPLY_TIMESTAMPS and _REPLY_TIMESTAMPS[0].timestamp() < cutoff:
+        _REPLY_TIMESTAMPS.popleft()
+    return len(_REPLY_TIMESTAMPS)
+
+
+def _can_send_reply_now() -> Tuple[bool, int]:
+    now_utc = datetime.now(timezone.utc)
+    current = _prune_and_count_recent_replies(now_utc)
+    return (current < _RATE_LIMIT_MAX_REPLIES, current)
+
+
+def _record_reply_timestamp() -> None:
+    now_utc = datetime.now(timezone.utc)
+    _prune_and_count_recent_replies(now_utc)
+    _REPLY_TIMESTAMPS.append(now_utc)
+
+
+def _build_html_body(answer_text: str) -> str:
+    year = datetime.now(timezone.utc).year
+    safe_answer = (answer_text or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br/>")
+    return (
+        "<div style='font-family:Segoe UI, Arial, sans-serif; color:#111827; font-size:14px; line-height:1.6;'>"
+        f"<p style='margin:0 0 12px 0'>{safe_answer}</p>"
+        "<div style='margin-top:16px; padding-top:10px; border-top:1px solid #E5E7EB; color:#6B7280; font-size:12px;'>"
+        "<p style='margin:0 0 4px 0;'>Disclaimer: This content in this email is AI-generated.</p>"
+        f"<p style='margin:0;'>© {year}, nexus intelligence</p>"
+        "</div></div>"
+    )
 
 
 def _best_table_by_keywords(tables: Dict[str, pd.DataFrame], keywords: List[str]) -> Optional[Tuple[str, pd.DataFrame]]:
@@ -465,6 +598,8 @@ def process_agent_inbox_once(
     replied = 0
     processed = 0
     skipped = 0
+    rate_limited = 0
+    blocked_by_policy = 0
     failures: List[str] = []
 
     imap_conn = None
@@ -487,6 +622,23 @@ def process_agent_inbox_once(
         message_ids = payload[0].split()
         unseen_count = len(message_ids)
         _log_event("info", f"Found {unseen_count} unseen message(s) in inbox.", {"unseen_count": unseen_count})
+
+        # Fallback: if no unseen messages are found, inspect a small recent window.
+        # This helps diagnose mails that were auto-marked seen by clients/filters.
+        if unseen_count == 0:
+            _log_event("debug", "No unseen messages found. Falling back to recent inbox scan.", {})
+            all_status, all_payload = imap_conn.search(None, "ALL")
+            if all_status == "OK":
+                all_ids = all_payload[0].split()
+                message_ids = all_ids[-max_messages_per_cycle:] if all_ids else []
+                _log_event(
+                    "info",
+                    f"Fallback selected {len(message_ids)} recent message(s) for inspection.",
+                    {"selected_recent_count": len(message_ids), "total_all_count": len(all_ids)},
+                )
+            else:
+                _log_event("warning", "Fallback ALL search failed; continuing with unseen-only list.", {"status": all_status})
+
         selected_ids = list(reversed(message_ids))[:max_messages_per_cycle]
 
         _log_event("debug", f"Attempting SMTP connection to {smtp_host}:{smtp_port}...", {"smtp_host": smtp_host, "smtp_port": smtp_port})
@@ -502,18 +654,55 @@ def process_agent_inbox_once(
             try:
                 status, data = imap_conn.fetch(message_id, "(BODY.PEEK[])")
                 if status != "OK" or not data or not data[0]:
+                    _log_event("warning", "Skipping message due to failed fetch payload.", {"message_id": str(message_id), "status": status})
                     skipped += 1
                     continue
 
                 raw_bytes = data[0][1]
                 msg = BytesParser(policy=policy.default).parsebytes(raw_bytes)
                 sender = parseaddr(msg.get("From", ""))[1].strip().lower()
+                msg_subject = str(msg.get("Subject", "")).strip()
+                to_header = str(msg.get("To", "")).strip()
+                cc_header = str(msg.get("Cc", "")).strip()
+
+                _log_event(
+                    "debug",
+                    "Fetched candidate message.",
+                    {
+                        "message_id": str(message_id),
+                        "from": sender,
+                        "to": to_header,
+                        "cc": cc_header,
+                        "subject": msg_subject,
+                    },
+                )
+
                 if not sender:
+                    _log_event("warning", "Skipping message with empty sender.", {"message_id": str(message_id), "subject": msg_subject})
                     skipped += 1
                     continue
 
                 if sender == agent_email.lower():
                     imap_conn.store(message_id, "+FLAGS", "\\Seen")
+                    _log_event("debug", "Skipping self-sent message.", {"message_id": str(message_id), "sender": sender})
+                    skipped += 1
+                    continue
+
+                if not _is_allowed_sender(sender, msg, agent_email, allowed_domain="burplefolk.com"):
+                    _log_event(
+                        "warning",
+                        "Policy skip: sender not authorized for auto-reply.",
+                        {
+                            "message_id": str(message_id),
+                            "sender": sender,
+                            "to": to_header,
+                            "cc": cc_header,
+                            "agent_email": agent_email,
+                            "subject": msg_subject,
+                            "cc_subject_keywords": _CC_SUBJECT_KEYWORDS,
+                        },
+                    )
+                    blocked_by_policy += 1
                     skipped += 1
                     continue
 
@@ -521,6 +710,33 @@ def process_agent_inbox_once(
                 question = _first_question_line(plain_text)
                 if not question:
                     question = str(msg.get("Subject", "")).strip()
+
+                if not _is_supported_business_query(question):
+                    _log_event(
+                        "warning",
+                        "Policy skip: unsupported/non-business query intent.",
+                        {"message_id": str(message_id), "sender": sender, "question": question[:200]},
+                    )
+                    blocked_by_policy += 1
+                    skipped += 1
+                    continue
+
+                can_send, in_window_count = _can_send_reply_now()
+                if not can_send:
+                    _log_event(
+                        "warning",
+                        "Rate limit reached: skipping reply to protect account.",
+                        {
+                            "message_id": str(message_id),
+                            "sender": sender,
+                            "window_seconds": _RATE_LIMIT_WINDOW_SECONDS,
+                            "max_replies": _RATE_LIMIT_MAX_REPLIES,
+                            "current_replies": in_window_count,
+                        },
+                    )
+                    rate_limited += 1
+                    skipped += 1
+                    continue
 
                 response_text = generate_query_from_email_with_ai(
                     email_body=question,
@@ -532,16 +748,24 @@ def process_agent_inbox_once(
                     gemini_model=gemini_model,
                 )
 
-                footer = (
-                    "\n\nDisclaimer: This content in this email is AI-generated."
-                    f"\n© {datetime.now(timezone.utc).year}, nexus intelligence"
-                )
-                final_body = response_text + footer
+                final_body = response_text
+                html_body = _build_html_body(response_text)
 
                 to_recipients, cc_recipients = _collect_reply_all_recipients(msg, agent_email)
+                _log_event(
+                    "debug",
+                    "Computed reply-all recipients.",
+                    {
+                        "message_id": str(message_id),
+                        "to_recipients": to_recipients,
+                        "cc_recipients": cc_recipients,
+                        "sender": sender,
+                    },
+                )
                 if not to_recipients and sender:
                     to_recipients = [sender]
                 if not to_recipients and not cc_recipients:
+                    _log_event("warning", "Skipping message with no computed recipients.", {"message_id": str(message_id), "sender": sender})
                     skipped += 1
                     continue
 
@@ -559,18 +783,34 @@ def process_agent_inbox_once(
                     response["References"] = message_id_hdr
 
                 response.set_content(final_body)
+                response.add_alternative(html_body, subtype="html")
                 smtp_conn.send_message(response)
+                _record_reply_timestamp()
                 imap_conn.store(message_id, "+FLAGS", "\\Seen \\Answered")
+                _log_event(
+                    "info",
+                    "Reply sent successfully.",
+                    {
+                        "message_id": str(message_id),
+                        "subject": response.get("Subject", ""),
+                        "to": response.get("To", ""),
+                        "cc": response.get("Cc", ""),
+                    },
+                )
                 replied += 1
             except Exception as exc:
                 message_id_text = message_id.decode(errors="ignore") if isinstance(message_id, (bytes, bytearray)) else str(message_id)
                 failures.append(f"message_id={message_id_text}: {exc}")
+                _log_event("error", "Failed processing message.", {"message_id": message_id_text, "error": str(exc)})
 
         summary = {
             "unseen_count": unseen_count,
             "processed": processed,
             "replied": replied,
             "skipped": skipped,
+            "rate_limited": rate_limited,
+            "blocked_by_policy": blocked_by_policy,
+            "reply_limit_per_minute": _RATE_LIMIT_MAX_REPLIES,
             "failures": failures,
         }
 
