@@ -28,3 +28,6 @@ skills-lock.json
 .env
 .env.*
 !.env.example
+
+# Local frontend env file
+nexus-ui/.env
