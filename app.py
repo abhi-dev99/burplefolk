@@ -333,8 +333,12 @@ def agent_dashboard() -> None:
     
     agent_auth_state = st.session_state.get("agent_auth_state", {})
     
-    # Logout button at top
-    col1, col2, col3 = st.columns([0.1, 0.8, 0.1])
+    # Navigation + logout
+    col1, col2, col3 = st.columns([0.2, 0.6, 0.2])
+    with col1:
+        if st.button("Back to Home", use_container_width=True, key="agent_dashboard_home"):
+            st.session_state["agent_page_active"] = False
+            st.rerun()
     with col3:
         if st.button("Logout", use_container_width=True, key="agent_dashboard_logout"):
             st.session_state["agent_auth_state"] = {"ok": False, "email": "", "idToken": ""}
@@ -597,6 +601,8 @@ def main() -> None:
         st.session_state["show_agent_login_modal"] = False
     if "agent_tables_snapshot" not in st.session_state:
         st.session_state["agent_tables_snapshot"] = {}
+    if "analysis_result" not in st.session_state:
+        st.session_state["analysis_result"] = None
 
     _sync_agent_loop_from_snapshot()
 
@@ -844,7 +850,8 @@ def main() -> None:
         st.info("Connect to the database from the sidebar first. Analysis starts only after a successful connection test.")
         return
 
-    if not file_map:
+    cached_analysis = st.session_state.get("analysis_result")
+    if not file_map and not cached_analysis:
         st.title(APP_TITLE)
         st.markdown(
             """
@@ -864,38 +871,42 @@ def main() -> None:
         )
         return
 
-    progress = st.progress(0, text="Waiting to start")
+    analysis = cached_analysis
+    if file_map:
+        progress = st.progress(0, text="Waiting to start")
 
-    def progress_callback(progress_value: int, message: str) -> None:
-        progress.progress(progress_value, text=message)
+        def progress_callback(progress_value: int, message: str) -> None:
+            progress.progress(progress_value, text=message)
 
-    try:
-        with st.spinner("Running schema intelligence pipeline..."):
-            analysis = run_analysis(
-                source_type,
-                file_map,
-                profile_row_limit,
-                db_config=db_config,
-                progress_callback=progress_callback,
-                erd_view_mode=erd_view_mode,
-                erd_layout_direction=erd_layout_direction,
-                ollama_model=llm_model if ai_provider == "ollama" else "",
-                ollama_endpoint=ollama_endpoint,
-                enable_ai_erd_fallback=enable_ai_erd_fallback,
-                temporal_cadence_days=temporal_cadence_days,
-            )
-    except Exception as exc:
+        try:
+            with st.spinner("Running schema intelligence pipeline..."):
+                analysis = run_analysis(
+                    source_type,
+                    file_map,
+                    profile_row_limit,
+                    db_config=db_config,
+                    progress_callback=progress_callback,
+                    erd_view_mode=erd_view_mode,
+                    erd_layout_direction=erd_layout_direction,
+                    ollama_model=llm_model if ai_provider == "ollama" else "",
+                    ollama_endpoint=ollama_endpoint,
+                    enable_ai_erd_fallback=enable_ai_erd_fallback,
+                    temporal_cadence_days=temporal_cadence_days,
+                )
+        except Exception as exc:
+            progress.empty()
+            if source_type == "DB Connection":
+                st.error(format_db_connection_error(exc, db_config))
+            else:
+                st.error(f"Analysis failed: {exc}")
+            return
         progress.empty()
-        if source_type == "DB Connection":
-            st.error(format_db_connection_error(exc, db_config))
-        else:
-            st.error(f"Analysis failed: {exc}")
-        return
-    progress.empty()
 
     if not analysis:
         st.error("Unable to analyze source. Validate file format and try again.")
         return
+
+    st.session_state["analysis_result"] = analysis
 
     st.session_state["agent_tables_snapshot"] = analysis.get("tables", {})
 
