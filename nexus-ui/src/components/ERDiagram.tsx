@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { ReactFlow, Controls, Background, BackgroundVariant, MarkerType, Handle, Position } from '@xyflow/react';
+import { ReactFlow, Controls, Background, BackgroundVariant, MarkerType } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import dagre from 'dagre';
 import clsx from 'clsx';
@@ -8,8 +8,6 @@ import { Key } from 'lucide-react';
 const TableNode = ({ data }: any) => {
   return (
     <div className="bg-white/90 dark:bg-[#0b1220]/90 backdrop-blur-md rounded-xl border-2 border-slate-200 dark:border-slate-700 shadow-xl overflow-hidden min-w-[240px]">
-      <Handle type="target" position={Position.Left} className="w-1.5 h-1.5 !bg-blue-500 rounded-full border border-white dark:border-slate-800" />
-      <Handle type="source" position={Position.Right} className="w-1.5 h-1.5 !bg-blue-500 rounded-full border border-white dark:border-slate-800" />
       <div className="bg-gradient-to-r from-blue-600 to-blue-500 px-4 py-3 border-b border-blue-700/50">
         <h3 className="font-bold text-white tracking-wide text-sm">{data.label}</h3>
       </div>
@@ -111,12 +109,13 @@ export default function ERDiagram({ analysisData }: { analysisData: any }) {
   [initialNodes, initialEdges]);
 
   return (
-    <div id="react-flow-er-container" style={{ width: '100%', height: '800px', borderRadius: '2rem', overflow: 'hidden' }}>
+    <div style={{ width: '100%', height: '800px', borderRadius: '2rem', overflow: 'hidden' }}>
       <ReactFlow
         nodes={layoutedNodes}
         edges={layoutedEdges}
         nodeTypes={nodeTypes}
         fitView
+        colorMode="system"
         className="bg-transparent"
         minZoom={0.1}
         maxZoom={1.5}
