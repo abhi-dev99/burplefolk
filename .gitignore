@@ -24,3 +24,7 @@ schema_change_history.jsonl
 00-codeapex-ftw/
 api_fix.py
 skills-lock.json
+.streamlit/secrets.toml
+.env
+.env.*
+!.env.example
