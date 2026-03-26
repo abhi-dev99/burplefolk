@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Database, FileUp, ListTree, ActivitySquare, ShieldCheck, Share2, BrainCircuit, Moon, Sun, ArrowRight, Loader2, Download } from 'lucide-react';
+import { Database, FileUp, ListTree, ActivitySquare, ShieldCheck, Share2, BrainCircuit, Moon, Sun, ArrowRight, Loader2, Download, Mail } from 'lucide-react';
 import clsx from 'clsx';
 import mermaid from 'mermaid';
 import axios from 'axios';
@@ -75,14 +75,10 @@ function TopNav({
   activeTab,
   setActiveTab,
   showAnalysisNav,
-  onAgentClick,
-  agentButtonLabel,
 }: {
   activeTab?: string,
   setActiveTab?: (t: string) => void,
   showAnalysisNav: boolean,
-  onAgentClick: () => void,
-  agentButtonLabel: string,
 }) {
   const navItems = [
     { id: 'overview', label: 'Overview' },
@@ -99,37 +95,33 @@ function TopNav({
     <nav className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[95%] max-w-5xl rounded-[2rem] bg-white/60 dark:bg-black/40 backdrop-blur-3xl border border-white/40 dark:border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.04)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.2)] print-hidden">
       <div className="flex items-center justify-between px-6 py-3">
         <div className="flex items-center gap-3 min-w-fit">
-          <span className="font-medium text-2xl tracking-tight text-neutral-900 dark:text-neutral-100 font-inter lowercase whitespace-nowrap"><span className="font-bold">nexus</span> intelligence.</span>
+          <span className="font-medium text-[22px] tracking-tight text-neutral-900 dark:text-neutral-100 font-inter lowercase whitespace-nowrap"><span className="font-bold">nexus</span> intelligence.</span>
         </div>
         
         {showAnalysisNav && setActiveTab && (
-          <div className="hidden md:flex items-center gap-1 bg-black/5 dark:bg-white/5 p-1 rounded-full flex-nowrap">
-            {navItems.map(item => (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                className={clsx(
-                  "px-3 py-1.5 rounded-full text-[13px] font-medium transition-all duration-300 whitespace-nowrap",
-                  activeTab === item.id 
-                    ? "bg-white dark:bg-neutral-800 text-black dark:text-white shadow-sm" 
-                    : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200"
-                )}
-              >
-                {item.label}
-              </button>
-            ))}
+          <div className="hidden md:flex items-center px-3">
+            <div>
+              <div className="nav-scrollbar-none flex items-center gap-1 bg-black/5 dark:bg-white/5 p-1 rounded-full flex-nowrap overflow-x-auto scroll-smooth">
+              {navItems.map(item => (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
+                  className={clsx(
+                    "px-3 py-1.5 rounded-full text-[13px] font-medium transition-all duration-300 whitespace-nowrap",
+                    activeTab === item.id 
+                      ? "bg-white dark:bg-neutral-800 text-black dark:text-white shadow-sm" 
+                      : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200"
+                  )}
+                >
+                  {item.label}
+                </button>
+              ))}
+              </div>
+            </div>
           </div>
         )}
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onAgentClick}
-            className="px-4 py-2 rounded-full text-xs font-semibold tracking-wide transition-colors border bg-emerald-500 border-emerald-500 text-white hover:bg-emerald-600 whitespace-nowrap"
-          >
-            {agentButtonLabel}
-          </button>
-          <ThemeToggle />
-        </div>
+        <ThemeToggle />
       </div>
     </nav>
   );
@@ -1064,7 +1056,10 @@ export default function App() {
         activeTab={hasAnalysis && appView === 'home' ? activeTab : undefined}
         setActiveTab={setActiveTab}
         showAnalysisNav={hasAnalysis && appView === 'home'}
-        onAgentClick={() => {
+      />
+
+      <button
+        onClick={() => {
           setAgentError(null);
           setAgentInfo(null);
           if (agentAuthState.ok) {
@@ -1073,8 +1068,11 @@ export default function App() {
           }
           setAgentModalOpen(true);
         }}
-        agentButtonLabel={agentAuthState.ok ? (appView === 'agent-settings' ? 'Back Home' : 'Agent Settings') : 'Agent Login'}
-      />
+        className="fixed top-4 right-[2.5vw] z-[60] h-[54px] min-w-[148px] px-4 rounded-full text-[13px] font-medium tracking-wide transition-colors border border-emerald-500/80 text-emerald-500 hover:bg-emerald-500/10 whitespace-nowrap inline-flex items-center justify-center gap-2 bg-white/70 dark:bg-black/45 backdrop-blur-3xl"
+      >
+        <Mail className="w-3.5 h-3.5" />
+        {agentAuthState.ok ? (appView === 'agent-settings' ? 'Back Home' : 'Agent Settings') : 'Agent Login'}
+      </button>
 
       {agentToast && (
         <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[75] px-4 py-2 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-700 dark:text-emerald-300 text-sm font-medium">

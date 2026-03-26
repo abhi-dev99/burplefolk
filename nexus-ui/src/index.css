@@ -40,3 +40,12 @@ body {
     display: none !important;
   }
 }
+
+.nav-scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.nav-scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
