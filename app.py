@@ -774,7 +774,19 @@ def main() -> None:
         with rcol:
             st.subheader("Quality Spread")
             score_df = profile_df[["table", "quality_score"]].sort_values("quality_score")
-            st.bar_chart(score_df.set_index("table"))
+            st.dataframe(
+                score_df,
+                hide_index=True,
+                use_container_width=True,
+                column_config={
+                    "quality_score": st.column_config.ProgressColumn(
+                        "quality_score",
+                        min_value=0,
+                        max_value=100,
+                        format="%.1f%%",
+                    )
+                },
+            )
 
         with st.expander("Detailed Context (i)"):
             st.caption("Business context and rationale behind the metrics above.")
