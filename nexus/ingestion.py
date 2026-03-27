@@ -21,7 +21,8 @@ def csv_ingest(uploaded_files: List, profile_row_limit: int) -> Tuple[Dict[str, 
         name = sanitize_name(Path(uploaded.name).stem)
         newline_count = raw.count(b"\n")
         row_counts[name] = max(0, newline_count - 1)
-        sampled = pd.read_csv(io.BytesIO(raw), nrows=profile_row_limit)
+        nrows = None if int(profile_row_limit) <= 0 else int(profile_row_limit)
+        sampled = pd.read_csv(io.BytesIO(raw), nrows=nrows)
         tables[name] = sampled
 
     return tables, row_counts
@@ -46,7 +47,10 @@ def sqlite_ingest(file_bytes: bytes, profile_row_limit: int) -> Tuple[Dict[str, 
         for table in table_names:
             count = conn.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
             row_counts[table] = int(count)
-            sampled = pd.read_sql_query(f'SELECT * FROM "{table}" LIMIT {profile_row_limit}', conn)
+            if int(profile_row_limit) <= 0:
+                sampled = pd.read_sql_query(f'SELECT * FROM "{table}"', conn)
+            else:
+                sampled = pd.read_sql_query(f'SELECT * FROM "{table}" LIMIT {int(profile_row_limit)}', conn)
             tables[table] = sampled
 
             fk_rows = conn.execute(f'PRAGMA foreign_key_list("{table}")').fetchall()
@@ -168,7 +172,7 @@ def database_ingest(cfg: DBConnectionConfig, profile_row_limit: int) -> Tuple[Di
                 count_stmt = select(func.count()).select_from(table)
                 row_counts[table_name] = int(conn.execute(count_stmt).scalar_one())
 
-                sample_stmt = select(table).limit(profile_row_limit)
+                sample_stmt = select(table) if int(profile_row_limit) <= 0 else select(table).limit(int(profile_row_limit))
                 tables[table_name] = pd.read_sql(sample_stmt, conn)
 
                 for fk in inspector.get_foreign_keys(table_name):

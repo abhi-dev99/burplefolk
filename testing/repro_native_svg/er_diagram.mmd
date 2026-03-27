@@ -1,0 +1,29 @@
+erDiagram
+  STAFFS {
+    INT staff_id PK
+    INT store_id FK
+    INT manager_id FK
+    STRING first_name
+    STRING last_name
+    STRING email
+    STRING phone
+    INT active
+  }
+  STOCKS {
+    INT store_id PK
+    INT product_id PK
+    INT quantity
+  }
+  STORES {
+    INT store_id PK
+    STRING store_name
+    STRING phone
+    STRING email
+    STRING street
+    STRING city
+    STRING state
+    INT zip_code
+  }
+  STAFFS ||--o{ STAFFS : manager_id_to_staff_id
+  STORES ||--o{ STAFFS : store_id
+  STORES ||--o{ STOCKS : store_id

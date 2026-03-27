@@ -1,0 +1,4 @@
+table,quality_score,completeness_score,consistency_score,freshness_score,duplicate_pk_records,issues
+city,95.0,100.0,99.99,75.0,0,
+country,93.25,96.29,99.78,75.0,0,
+countrylanguage,95.0,100.0,100.0,75.0,0,

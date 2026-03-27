@@ -45,6 +45,10 @@ _AGENT_LOOP_THREAD: Optional[threading.Thread] = None
 _AGENT_LOOP_STOP_EVENT: Optional[threading.Event] = None
 _AGENT_LOOP_FINGERPRINT: str = ""
 _AGENT_LOOP_META: Dict[str, Any] = {}
+_MIN_AGENT_POLL_SECONDS = 5
+_MAX_AGENT_POLL_SECONDS = 60
+_MIN_AGENT_MESSAGES_PER_CYCLE = 0
+_MAX_AGENT_MESSAGES_PER_CYCLE = 5
 
 
 class AgentLoginRequest(BaseModel):
@@ -72,7 +76,7 @@ class AgentProcessRequest(BaseModel):
 
 class AgentAutoReplyRequest(BaseModel):
     enable_auto_reply: bool
-    poll_seconds: int = 60
+    poll_seconds: int = _MIN_AGENT_POLL_SECONDS
     agent_email: str
     gmail_app_password: str
     imap_host: str = "imap.gmail.com"
@@ -146,6 +150,39 @@ def _stop_agent_loop_locked() -> None:
     _AGENT_LOOP_FINGERPRINT = ""
     _AGENT_LOOP_META = {}
 
+
+def _resolve_profile_row_limit(raw_limit: Optional[int]) -> int:
+    """
+    Normalize row-limit input.
+    - 0 means full scan (no row cap).
+    - Positive values are clamped to a safe upper bound.
+    """
+    if raw_limit is None:
+        return 1000000
+    try:
+        value = int(raw_limit)
+    except (TypeError, ValueError):
+        return 1000000
+    if value <= 0:
+        return 0
+    return min(value, 2000000)
+
+
+def _normalize_agent_poll_seconds(raw_seconds: int) -> int:
+    try:
+        value = int(raw_seconds)
+    except (TypeError, ValueError):
+        return _MIN_AGENT_POLL_SECONDS
+    return max(_MIN_AGENT_POLL_SECONDS, min(_MAX_AGENT_POLL_SECONDS, value))
+
+
+def _normalize_agent_messages_per_cycle(raw_count: int) -> int:
+    try:
+        value = int(raw_count)
+    except (TypeError, ValueError):
+        return _MAX_AGENT_MESSAGES_PER_CYCLE
+    return max(_MIN_AGENT_MESSAGES_PER_CYCLE, min(_MAX_AGENT_MESSAGES_PER_CYCLE, value))
+
 def sanitize_for_json(data):
     if isinstance(data, dict):
         return {str(k): sanitize_for_json(v) for k, v in data.items()}
@@ -162,17 +199,21 @@ def sanitize_for_json(data):
     return data
 
 @app.post("/api/analyze/csv")
-async def analyze_csv(files: List[UploadFile] = File(...)):
+async def analyze_csv(
+    files: List[UploadFile] = File(...),
+    profile_row_limit: int = Form(1000000),
+):
     file_map = {}
     for f in files:
         file_map[f.filename] = await f.read()
     
     try:
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        resolved_profile_limit = _resolve_profile_row_limit(profile_row_limit)
         results = run_analysis(
             source_type="CSV",
             file_map=file_map,
-            profile_row_limit=5000,
+            profile_row_limit=resolved_profile_limit,
             db_config=None,
             progress_callback=None,
             erd_layout_direction="TB",
@@ -218,6 +259,7 @@ async def analyze_db(
     database: str = Form(...),
     username: str = Form(...),
     password: str = Form(...),
+    profile_row_limit: int = Form(1000000),
 ):
     config = DBConnectionConfig(
         db_type=db_type,
@@ -230,10 +272,11 @@ async def analyze_db(
     
     try:
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        resolved_profile_limit = _resolve_profile_row_limit(profile_row_limit)
         results = run_analysis(
             source_type="DB Connection",
             file_map={},
-            profile_row_limit=5000,
+            profile_row_limit=resolved_profile_limit,
             db_config=config,
             progress_callback=None,
         )
@@ -289,7 +332,7 @@ async def agent_defaults():
         "imapHost": "imap.gmail.com",
         "smtpHost": "smtp.gmail.com",
         "smtpPort": 587,
-        "pollSeconds": 60,
+        "pollSeconds": _MIN_AGENT_POLL_SECONDS,
         "maxMessagesPerCycle": 5,
         "aiProvider": "ollama",
         "ollamaEndpoint": endpoint,
@@ -333,6 +376,7 @@ async def agent_process_once(payload: AgentProcessRequest):
         raise HTTPException(status_code=400, detail="No analyzed tables are available yet. Analyze data first.")
 
     try:
+        normalized_max_messages = _normalize_agent_messages_per_cycle(payload.max_messages_per_cycle)
         summary = process_agent_inbox_once(
             agent_email=payload.agent_email,
             gmail_app_password=payload.gmail_app_password,
@@ -340,7 +384,7 @@ async def agent_process_once(payload: AgentProcessRequest):
             smtp_host=payload.smtp_host,
             smtp_port=int(payload.smtp_port),
             tables=tables_snapshot,
-            max_messages_per_cycle=int(payload.max_messages_per_cycle),
+            max_messages_per_cycle=normalized_max_messages,
             ai_provider=payload.ai_provider,
             ollama_endpoint=payload.ollama_endpoint,
             ollama_model=payload.ollama_model,
@@ -365,6 +409,8 @@ async def agent_auto_reply(payload: AgentAutoReplyRequest):
         raise HTTPException(status_code=400, detail="No analyzed tables are available yet. Analyze data first.")
 
     snapshot_signature = ",".join(sorted(tables_snapshot.keys())) if tables_snapshot else ""
+    normalized_poll_seconds = _normalize_agent_poll_seconds(payload.poll_seconds)
+    normalized_max_messages = _normalize_agent_messages_per_cycle(payload.max_messages_per_cycle)
     fingerprint = "|".join(
         [
             snapshot_signature,
@@ -372,8 +418,8 @@ async def agent_auto_reply(payload: AgentAutoReplyRequest):
             payload.imap_host.strip(),
             payload.smtp_host.strip(),
             str(int(payload.smtp_port)),
-            str(max(15, int(payload.poll_seconds))),
-            str(max(1, int(payload.max_messages_per_cycle))),
+            str(normalized_poll_seconds),
+            str(normalized_max_messages),
             payload.ai_provider,
             payload.ollama_endpoint.strip(),
             payload.ollama_model.strip(),
@@ -400,8 +446,8 @@ async def agent_auto_reply(payload: AgentAutoReplyRequest):
             imap_host=payload.imap_host,
             smtp_host=payload.smtp_host,
             smtp_port=int(payload.smtp_port),
-            interval_seconds=max(15, int(payload.poll_seconds)),
-            max_messages_per_cycle=max(1, int(payload.max_messages_per_cycle)),
+            interval_seconds=normalized_poll_seconds,
+            max_messages_per_cycle=normalized_max_messages,
             ai_provider=payload.ai_provider,
             ollama_endpoint=payload.ollama_endpoint,
             ollama_model=payload.ollama_model,
@@ -421,9 +467,10 @@ async def agent_auto_reply(payload: AgentAutoReplyRequest):
         _AGENT_LOOP_FINGERPRINT = fingerprint
         _AGENT_LOOP_META = {
             "agent_email": payload.agent_email,
-            "poll_seconds": max(15, int(payload.poll_seconds)),
-            "max_messages_per_cycle": max(1, int(payload.max_messages_per_cycle)),
+            "poll_seconds": normalized_poll_seconds,
+            "max_messages_per_cycle": normalized_max_messages,
             "ai_provider": payload.ai_provider,
+            "sla_deadline_seconds": _MAX_AGENT_POLL_SECONDS,
         }
 
         return {"ok": True, "status": _agent_loop_status_locked()}

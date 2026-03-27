@@ -1,0 +1,2 @@
+table,quality_score,completeness_score,consistency_score,freshness_score,duplicate_pk_records,issues
+students,94.17,100.0,83.33,100.0,0,

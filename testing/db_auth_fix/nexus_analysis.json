@@ -1,0 +1,64 @@
+{
+  "generated_at": "2026-03-20T16:50:30.773869+00:00",
+  "source_type": "DB Connection",
+  "avg_quality_score": 94.17,
+  "table_profiles": [
+    {
+      "table": "students",
+      "sample_rows": 2,
+      "estimated_total_rows": 2,
+      "column_count": 3,
+      "pk_candidates": [
+        "student_id",
+        "name"
+      ],
+      "duplicate_pk_records": 0,
+      "quality_score": 94.17,
+      "completeness_score": 100.0,
+      "consistency_score": 83.33,
+      "freshness_score": 100.0,
+      "issues": [],
+      "column_profiles": [
+        {
+          "table": "students",
+          "column": "student_id",
+          "sample_dtype": "int64",
+          "semantic_role": "identifier",
+          "null_percent": 0.0,
+          "unique_percent": 100.0,
+          "dominant_value_type": "numeric",
+          "type_consistency": 0.5,
+          "freshness_lag_days": null,
+          "sample_values": "1, 2"
+        },
+        {
+          "table": "students",
+          "column": "name",
+          "sample_dtype": "object",
+          "semantic_role": "descriptive text",
+          "null_percent": 0.0,
+          "unique_percent": 100.0,
+          "dominant_value_type": "text",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "Asha, Ravi"
+        },
+        {
+          "table": "students",
+          "column": "created_at",
+          "sample_dtype": "datetime64[ns]",
+          "semantic_role": "time dimension",
+          "null_percent": 0.0,
+          "unique_percent": 50.0,
+          "dominant_value_type": "datetime",
+          "type_consistency": 1.0,
+          "freshness_lag_days": 0.0,
+          "sample_values": "2026-03-20 22:19:43, 2026-03-20 22:19:43"
+        }
+      ]
+    }
+  ],
+  "relationships": [],
+  "business_context": "Nexus detected a relational environment with cross-table dependencies and operational telemetry.\nLargest table by volume: students (2 rows).\nRelationships discovered: 0 candidate foreign-key links.\nData quality risks are concentrated in: students (94.17%).\n\nPrioritize key constraints and missingness remediation in low-score tables.\nUse relationship confidence above 0.75 for direct ER governance, and manually review the rest.\nOperationalize dictionary exports as a living contract for analytics and application teams.",
+  "ai_brief": ""
+}

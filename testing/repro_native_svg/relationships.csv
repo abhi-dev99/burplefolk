@@ -1,0 +1,4 @@
+child_table,child_column,parent_table,parent_column,relation_type,confidence
+stocks,store_id,stores,store_id,many-to-one,1.0
+staffs,store_id,stores,store_id,many-to-one,1.0
+staffs,manager_id,staffs,staff_id,many-to-one,0.895

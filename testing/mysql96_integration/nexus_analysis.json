@@ -1,0 +1,366 @@
+{
+  "generated_at": "2026-03-20T18:28:23.566175+00:00",
+  "source_type": "DB Connection",
+  "avg_quality_score": 94.42,
+  "table_profiles": [
+    {
+      "table": "city",
+      "sample_rows": 4079,
+      "estimated_total_rows": 4079,
+      "column_count": 5,
+      "pk_candidates": [
+        "ID"
+      ],
+      "duplicate_pk_records": 0,
+      "quality_score": 95.0,
+      "completeness_score": 100.0,
+      "consistency_score": 99.99,
+      "freshness_score": 75.0,
+      "issues": [],
+      "column_profiles": [
+        {
+          "table": "city",
+          "column": "ID",
+          "sample_dtype": "int64",
+          "semantic_role": "identifier",
+          "null_percent": 0.0,
+          "unique_percent": 100.0,
+          "dominant_value_type": "numeric",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "1, 2, 3"
+        },
+        {
+          "table": "city",
+          "column": "Name",
+          "sample_dtype": "object",
+          "semantic_role": "descriptive text",
+          "null_percent": 0.0,
+          "unique_percent": 98.09,
+          "dominant_value_type": "text",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "Kabul, Qandahar, Herat"
+        },
+        {
+          "table": "city",
+          "column": "CountryCode",
+          "sample_dtype": "object",
+          "semantic_role": "general attribute",
+          "null_percent": 0.0,
+          "unique_percent": 5.69,
+          "dominant_value_type": "text",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "AFG, AFG, AFG"
+        },
+        {
+          "table": "city",
+          "column": "District",
+          "sample_dtype": "object",
+          "semantic_role": "general attribute",
+          "null_percent": 0.0,
+          "unique_percent": 33.51,
+          "dominant_value_type": "text",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "Kabol, Qandahar, Herat"
+        },
+        {
+          "table": "city",
+          "column": "Population",
+          "sample_dtype": "int64",
+          "semantic_role": "geospatial attribute",
+          "null_percent": 0.0,
+          "unique_percent": 95.54,
+          "dominant_value_type": "numeric",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "1780000, 237500, 186800"
+        }
+      ]
+    },
+    {
+      "table": "country",
+      "sample_rows": 239,
+      "estimated_total_rows": 239,
+      "column_count": 15,
+      "pk_candidates": [
+        "Code",
+        "Name",
+        "LocalName"
+      ],
+      "duplicate_pk_records": 0,
+      "quality_score": 93.25,
+      "completeness_score": 96.29,
+      "consistency_score": 99.78,
+      "freshness_score": 75.0,
+      "issues": [],
+      "column_profiles": [
+        {
+          "table": "country",
+          "column": "Code",
+          "sample_dtype": "object",
+          "semantic_role": "general attribute",
+          "null_percent": 0.0,
+          "unique_percent": 100.0,
+          "dominant_value_type": "text",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "ABW, AFG, AGO"
+        },
+        {
+          "table": "country",
+          "column": "Name",
+          "sample_dtype": "object",
+          "semantic_role": "descriptive text",
+          "null_percent": 0.0,
+          "unique_percent": 100.0,
+          "dominant_value_type": "text",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "Aruba, Afghanistan, Angola"
+        },
+        {
+          "table": "country",
+          "column": "Continent",
+          "sample_dtype": "object",
+          "semantic_role": "general attribute",
+          "null_percent": 0.0,
+          "unique_percent": 2.93,
+          "dominant_value_type": "text",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "North America, Asia, Africa"
+        },
+        {
+          "table": "country",
+          "column": "Region",
+          "sample_dtype": "object",
+          "semantic_role": "general attribute",
+          "null_percent": 0.0,
+          "unique_percent": 10.46,
+          "dominant_value_type": "text",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "Caribbean, Southern and Central Asia, Central Africa"
+        },
+        {
+          "table": "country",
+          "column": "SurfaceArea",
+          "sample_dtype": "float64",
+          "semantic_role": "general attribute",
+          "null_percent": 0.0,
+          "unique_percent": 99.58,
+          "dominant_value_type": "numeric",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "193.0, 652090.0, 1246700.0"
+        },
+        {
+          "table": "country",
+          "column": "IndepYear",
+          "sample_dtype": "float64",
+          "semantic_role": "general attribute",
+          "null_percent": 19.67,
+          "unique_percent": 45.83,
+          "dominant_value_type": "numeric",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "1919.0, 1975.0, 1912.0"
+        },
+        {
+          "table": "country",
+          "column": "Population",
+          "sample_dtype": "int64",
+          "semantic_role": "geospatial attribute",
+          "null_percent": 0.0,
+          "unique_percent": 94.56,
+          "dominant_value_type": "numeric",
+          "type_consistency": 0.971,
+          "freshness_lag_days": null,
+          "sample_values": "103000, 22720000, 12878000"
+        },
+        {
+          "table": "country",
+          "column": "LifeExpectancy",
+          "sample_dtype": "float64",
+          "semantic_role": "general attribute",
+          "null_percent": 7.11,
+          "unique_percent": 72.07,
+          "dominant_value_type": "numeric",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "78.4, 45.9, 38.3"
+        },
+        {
+          "table": "country",
+          "column": "GNP",
+          "sample_dtype": "float64",
+          "semantic_role": "general attribute",
+          "null_percent": 0.0,
+          "unique_percent": 89.54,
+          "dominant_value_type": "numeric",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "828.0, 5976.0, 6648.0"
+        },
+        {
+          "table": "country",
+          "column": "GNPOld",
+          "sample_dtype": "float64",
+          "semantic_role": "general attribute",
+          "null_percent": 25.52,
+          "unique_percent": 100.0,
+          "dominant_value_type": "numeric",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "793.0, 7984.0, 2500.0"
+        },
+        {
+          "table": "country",
+          "column": "LocalName",
+          "sample_dtype": "object",
+          "semantic_role": "descriptive text",
+          "null_percent": 0.0,
+          "unique_percent": 100.0,
+          "dominant_value_type": "text",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "Aruba, Afganistan/Afqanestan, Angola"
+        },
+        {
+          "table": "country",
+          "column": "GovernmentForm",
+          "sample_dtype": "object",
+          "semantic_role": "general attribute",
+          "null_percent": 0.0,
+          "unique_percent": 14.64,
+          "dominant_value_type": "text",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "Nonmetropolitan Territory of The Netherlands, Islamic Emirate, Republic"
+        },
+        {
+          "table": "country",
+          "column": "HeadOfState",
+          "sample_dtype": "object",
+          "semantic_role": "categorical attribute",
+          "null_percent": 0.42,
+          "unique_percent": 75.21,
+          "dominant_value_type": "text",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "Beatrix, Mohammad Omar, Jos\u00e9 Eduardo dos Santos"
+        },
+        {
+          "table": "country",
+          "column": "Capital",
+          "sample_dtype": "float64",
+          "semantic_role": "general attribute",
+          "null_percent": 2.93,
+          "unique_percent": 100.0,
+          "dominant_value_type": "numeric",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "129.0, 1.0, 56.0"
+        },
+        {
+          "table": "country",
+          "column": "Code2",
+          "sample_dtype": "object",
+          "semantic_role": "general attribute",
+          "null_percent": 0.0,
+          "unique_percent": 100.0,
+          "dominant_value_type": "text",
+          "type_consistency": 0.996,
+          "freshness_lag_days": null,
+          "sample_values": "AW, AF, AO"
+        }
+      ]
+    },
+    {
+      "table": "countrylanguage",
+      "sample_rows": 984,
+      "estimated_total_rows": 984,
+      "column_count": 4,
+      "pk_candidates": [],
+      "duplicate_pk_records": 0,
+      "quality_score": 95.0,
+      "completeness_score": 100.0,
+      "consistency_score": 100.0,
+      "freshness_score": 75.0,
+      "issues": [],
+      "column_profiles": [
+        {
+          "table": "countrylanguage",
+          "column": "CountryCode",
+          "sample_dtype": "object",
+          "semantic_role": "general attribute",
+          "null_percent": 0.0,
+          "unique_percent": 23.68,
+          "dominant_value_type": "text",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "ABW, ABW, ABW"
+        },
+        {
+          "table": "countrylanguage",
+          "column": "Language",
+          "sample_dtype": "object",
+          "semantic_role": "general attribute",
+          "null_percent": 0.0,
+          "unique_percent": 46.54,
+          "dominant_value_type": "text",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "Dutch, English, Papiamento"
+        },
+        {
+          "table": "countrylanguage",
+          "column": "IsOfficial",
+          "sample_dtype": "object",
+          "semantic_role": "general attribute",
+          "null_percent": 0.0,
+          "unique_percent": 0.2,
+          "dominant_value_type": "text",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "T, F, F"
+        },
+        {
+          "table": "countrylanguage",
+          "column": "Percentage",
+          "sample_dtype": "float64",
+          "semantic_role": "general attribute",
+          "null_percent": 0.0,
+          "unique_percent": 36.28,
+          "dominant_value_type": "numeric",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "5.3, 9.5, 76.7"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "child_table": "city",
+      "child_column": "CountryCode",
+      "parent_table": "country",
+      "parent_column": "Code",
+      "relation_type": "many-to-one",
+      "confidence": 1.0
+    },
+    {
+      "child_table": "countrylanguage",
+      "child_column": "CountryCode",
+      "parent_table": "country",
+      "parent_column": "Code",
+      "relation_type": "many-to-one",
+      "confidence": 1.0
+    }
+  ],
+  "business_context": "Nexus detected a relational environment with cross-table dependencies and operational telemetry.\nLargest table by volume: city (4079 rows).\nRelationships discovered: 2 candidate foreign-key links.\nData quality risks are concentrated in: country (93.25%), city (95.0%), countrylanguage (95.0%).\n\nPrioritize key constraints and missingness remediation in low-score tables.\nUse relationship confidence above 0.75 for direct ER governance, and manually review the rest.\nOperationalize dictionary exports as a living contract for analytics and application teams.",
+  "ai_brief": ""
+}

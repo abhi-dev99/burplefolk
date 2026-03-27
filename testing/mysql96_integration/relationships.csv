@@ -1,0 +1,3 @@
+child_table,child_column,parent_table,parent_column,relation_type,confidence
+city,CountryCode,country,Code,many-to-one,1.0
+countrylanguage,CountryCode,country,Code,many-to-one,1.0

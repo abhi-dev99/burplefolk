@@ -1,0 +1,20 @@
+table,column,data_type,role,is_primary_candidate,null_percent,unique_percent,quality_note,example_values,description
+stores,store_id,int64,identifier,True,0.0,100.0,Review recommended,"1, 2, 3",store_id is a identifier field in stores.
+stores,store_name,object,descriptive text,False,0.0,100.0,High quality,"Santa Cruz Bikes, Baldwin Bikes, Rowlett Bikes",store_name is a descriptive text field in stores.
+stores,phone,object,general attribute,False,0.0,100.0,High quality,"(831) 476-4321, (516) 379-8888, (972) 530-5555",phone is a general attribute field in stores.
+stores,email,object,general attribute,False,0.0,100.0,High quality,"santacruz@bikes.shop, baldwin@bikes.shop, rowlett@bikes.shop",email is a general attribute field in stores.
+stores,street,object,general attribute,False,0.0,100.0,High quality,"3700 Portola Drive, 4200 Chestnut Lane, 8000 Fairway Avenue",street is a general attribute field in stores.
+stores,city,object,general attribute,False,0.0,100.0,High quality,"Santa Cruz, Baldwin, Rowlett",city is a general attribute field in stores.
+stores,state,object,categorical attribute,False,0.0,100.0,High quality,"CA, NY, TX",state is a categorical attribute field in stores.
+stores,zip_code,int64,general attribute,False,0.0,100.0,High quality,"95060, 11432, 75088",zip_code is a general attribute field in stores.
+stocks,store_id,int64,identifier,True,0.0,0.32,Review recommended,"1, 1, 1",store_id is a identifier field in stocks.
+stocks,product_id,int64,identifier,True,0.0,33.33,High quality,"1, 2, 3",product_id is a identifier field in stocks.
+stocks,quantity,int64,general attribute,False,0.0,3.3,High quality,"27, 5, 6",quantity is a general attribute field in stocks.
+staffs,staff_id,int64,identifier,True,0.0,100.0,Review recommended,"1, 2, 3",staff_id is a identifier field in staffs.
+staffs,first_name,object,descriptive text,False,0.0,100.0,High quality,"Fabiola, Mireya, Genna",first_name is a descriptive text field in staffs.
+staffs,last_name,object,descriptive text,False,0.0,100.0,High quality,"Jackson, Copeland, Serrano",last_name is a descriptive text field in staffs.
+staffs,email,object,general attribute,False,0.0,100.0,High quality,"fabiola.jackson@bikes.shop, mireya.copeland@bikes.shop, genna.serrano@bikes.shop",email is a general attribute field in staffs.
+staffs,phone,object,general attribute,False,0.0,100.0,High quality,"(831) 555-5554, (831) 555-5555, (831) 555-5556",phone is a general attribute field in staffs.
+staffs,active,int64,general attribute,False,0.0,10.0,High quality,"1, 1, 1",active is a general attribute field in staffs.
+staffs,store_id,int64,identifier,False,0.0,30.0,Review recommended,"1, 1, 1",store_id is a identifier field in staffs.
+staffs,manager_id,float64,identifier,False,10.0,44.44,Review recommended,"1.0, 2.0, 2.0",manager_id is a identifier field in staffs.

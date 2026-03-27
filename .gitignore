@@ -1,5 +1,4 @@
 outputs/
-testing/
 *.log
 .agent/
 .agents/
@@ -21,7 +20,6 @@ test.csv
 test.sqlite
 schema_change_history.jsonl
 .stitch/
-00-codeapex-ftw/
 api_fix.py
 skills-lock.json
 .streamlit/secrets.toml

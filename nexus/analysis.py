@@ -59,6 +59,8 @@ def run_analysis(
     rel_keys = set()
     merged_relationships: List[Dict] = []
     for rel in explicit_relationships + inferred_relationships:
+        if rel.get("child_table") == rel.get("parent_table"):
+            continue
         key = (rel["child_table"], rel["child_column"], rel["parent_table"], rel["parent_column"])
         if key in rel_keys:
             continue

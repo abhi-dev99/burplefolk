@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Database, FileUp, ListTree, ActivitySquare, ShieldCheck, Share2, BrainCircuit, Moon, Sun, ArrowRight, Loader2, Download, Mail } from 'lucide-react';
+import { Database, FileUp, ListTree, ActivitySquare, ShieldCheck, Share2, BrainCircuit, Moon, Sun, ArrowRight, Loader2, Download, Mail, RefreshCw, Eye, EyeOff } from 'lucide-react';
 import clsx from 'clsx';
 import mermaid from 'mermaid';
 import axios from 'axios';
+import { toPng, toSvg } from 'html-to-image';
 import ERDiagram from './components/ERDiagram';
 import ErrorBoundary from './components/ErrorBoundary';
 
@@ -35,6 +36,68 @@ type AgentFormState = {
   geminiApiKey: string;
   geminiModel: string;
 };
+
+type SecretFieldKey = 'firebaseLoginPassword' | 'gmailAppPassword' | 'geminiApiKey' | 'dbPassword';
+
+const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+
+const humanizeLogKey = (key: string) =>
+  String(key || '')
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim();
+
+const formatAgentLogMetadata = (metadata: unknown): string => {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return '';
+  }
+  const obj = metadata as Record<string, unknown>;
+  const entries = Object.entries(obj).slice(0, 6);
+  if (entries.length === 0) {
+    return '';
+  }
+  return entries
+    .map(([key, value]) => `${humanizeLogKey(key)}: ${String(value)}`)
+    .join(' | ');
+};
+
+function PasswordField({
+  value,
+  onChange,
+  placeholder,
+  visible,
+  onToggle,
+  className,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  placeholder: string;
+  visible: boolean;
+  onToggle: () => void;
+  className: string;
+}) {
+  return (
+    <div className="relative">
+      <input
+        type={visible ? 'text' : 'password'}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className={clsx(className, 'pr-10')}
+      />
+      <button
+        type="button"
+        onClick={onToggle}
+        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-100"
+        aria-label={visible ? `Hide ${placeholder}` : `Show ${placeholder}`}
+        title={visible ? 'Hide value' : 'Show value'}
+      >
+        {visible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+      </button>
+    </div>
+  );
+}
 
 // ------------------------------------
 // UI COMPONENTS
@@ -139,8 +202,10 @@ const highlightText = (text: string) => {
   return <span dangerouslySetInnerHTML={{ __html: highlighted }} />;
 };
 
-function DataView({ activeTab, analysisData }: { activeTab: string, analysisData: any }) {
+function DataView({ activeTab, analysisData, processedRowLimit }: { activeTab: string, analysisData: any, processedRowLimit: number }) {
   const mermaidRef = useRef<HTMLDivElement>(null);
+  const erDiagramRef = useRef<HTMLDivElement>(null);
+  const [copyStatus, setCopyStatus] = useState<string>('');
 
   const renderRowTable = (row: any, color: 'emerald' | 'rose') => {
     if (!row) return <span className={`text-${color}-500 italic`}>No data available</span>;
@@ -206,6 +271,50 @@ function DataView({ activeTab, analysisData }: { activeTab: string, analysisData
       }).catch(err => console.error("Mermaid error", err));
     }
   }, [activeTab, analysisData]);
+
+  const downloadErAsPng = async () => {
+    if (!erDiagramRef.current) return;
+    try {
+      const dataUrl = await toPng(erDiagramRef.current, { cacheBust: true, pixelRatio: 2 });
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = 'nexus_er_diagram.png';
+      link.click();
+    } catch (error) {
+      console.error('Failed to export PNG', error);
+      alert('Could not export PNG. Please try again.');
+    }
+  };
+
+  const downloadErAsSvg = async () => {
+    if (!erDiagramRef.current) return;
+    try {
+      const dataUrl = await toSvg(erDiagramRef.current, { cacheBust: true });
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = 'nexus_er_diagram.svg';
+      link.click();
+    } catch (error) {
+      console.error('Failed to export SVG', error);
+      alert('Could not export SVG. Please try again.');
+    }
+  };
+
+  const copyMermaidCode = async () => {
+    const code = String(analysisData?.er_diagram || '').trim();
+    if (!code) {
+      setCopyStatus('No Mermaid code available yet.');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopyStatus('Mermaid code copied.');
+      setTimeout(() => setCopyStatus(''), 1800);
+    } catch {
+      setCopyStatus('Clipboard blocked by browser.');
+      setTimeout(() => setCopyStatus(''), 1800);
+    }
+  };
 
   const GlassCard = ({ children, className = "", id }: { children: React.ReactNode, className?: string, id?: string }) => (
     <div id={id} className={clsx("bg-white/40 dark:bg-black/20 backdrop-blur-xl border border-white/40 dark:border-white/5 rounded-[2rem] shadow-[0_8px_30px_rgba(0,0,0,0.02)] overflow-hidden", className)}>
@@ -450,9 +559,30 @@ function DataView({ activeTab, analysisData }: { activeTab: string, analysisData
 
       {/* ER GRAPH */}
       <div className={clsx("animate-in fade-in duration-700 w-full mt-24 flex flex-col h-[calc(100vh-120px)] print:hidden", activeTab !== 'er' && "hidden")}>
-        <h2 className="text-4xl font-light tracking-tight text-neutral-900 dark:text-white mb-8 shrink-0">Entity <span className="font-medium inline-block relative border-b border-rose-500/30">Relationships</span></h2>
+        <div className="mb-6 shrink-0 flex items-center justify-between gap-3">
+          <h2 className="text-4xl font-light tracking-tight text-neutral-900 dark:text-white">Entity <span className="font-medium inline-block relative border-b border-rose-500/30">Relationships</span></h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <button onClick={copyMermaidCode} className="px-4 py-2 rounded-full text-sm font-medium border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-neutral-700 dark:text-neutral-200 transition-colors">
+              Copy Mermaid
+            </button>
+            <button onClick={downloadErAsSvg} className="px-4 py-2 rounded-full text-sm font-medium border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-neutral-700 dark:text-neutral-200 transition-colors">
+              Download SVG
+            </button>
+            <button onClick={downloadErAsPng} className="px-4 py-2 rounded-full text-sm font-medium border border-blue-200 dark:border-blue-800 bg-blue-500/10 hover:bg-blue-500/20 text-blue-700 dark:text-blue-300 transition-colors">
+              Download PNG
+            </button>
+          </div>
+        </div>
+        {copyStatus && (
+          <div className="mb-3 text-xs text-neutral-500 dark:text-neutral-400">{copyStatus}</div>
+        )}
+        <div className="mb-4 text-xs text-neutral-500 dark:text-neutral-400">
+          Processing limits: up to {processedRowLimit <= 0 ? 'all available' : processedRowLimit.toLocaleString()} profiled rows per table, with 50 sample rows per table in API payload.
+        </div>
         <GlassCard className="p-0 flex-1 flex justify-center overflow-hidden w-full relative min-h-[600px]">
-           <ERDiagram analysisData={analysisData} />
+          <div ref={erDiagramRef} className="w-full h-full">
+            <ERDiagram analysisData={analysisData} />
+          </div>
         </GlassCard>
       </div>
 
@@ -739,6 +869,14 @@ export default function App() {
   const [agentAutoReplyEnabled, setAgentAutoReplyEnabled] = useState(false);
   const [agentLogs, setAgentLogs] = useState<Array<Record<string, unknown>>>([]);
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
+  const [agentStatusRefreshing, setAgentStatusRefreshing] = useState(false);
+  const [agentStatusUpdatedAt, setAgentStatusUpdatedAt] = useState<number | null>(null);
+  const [secretVisibility, setSecretVisibility] = useState<Record<SecretFieldKey, boolean>>({
+    firebaseLoginPassword: false,
+    gmailAppPassword: false,
+    geminiApiKey: false,
+    dbPassword: false,
+  });
   const [agentForm, setAgentForm] = useState<AgentFormState>({
     firebaseApiKey: '',
     firebaseAuthDomain: '',
@@ -751,7 +889,7 @@ export default function App() {
     imapHost: 'imap.gmail.com',
     smtpHost: 'smtp.gmail.com',
     smtpPort: 587,
-    pollSeconds: 60,
+    pollSeconds: 5,
     maxMessagesPerCycle: 5,
     aiProvider: 'ollama',
     ollamaEndpoint: 'http://localhost:11434',
@@ -761,7 +899,13 @@ export default function App() {
   });
 
   const [dragActive, setDragActive] = useState(false);
+  const [analysisRowLimit, setAnalysisRowLimit] = useState<number>(1000000);
+  const [lastRunRowLimit, setLastRunRowLimit] = useState<number>(1000000);
   const hasAnalysis = ingestionState === 'done' && Boolean(analysisData);
+
+  const toggleSecretVisibility = (key: SecretFieldKey) => {
+    setSecretVisibility((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
   const refreshAgentLogs = async () => {
     try {
@@ -773,12 +917,16 @@ export default function App() {
   };
 
   const refreshAgentRuntimeStatus = async () => {
+    setAgentStatusRefreshing(true);
     try {
       const res = await axios.get(`${API_BASE}/agent/auto-reply/status`);
       setAgentLive(Boolean(res.data?.live));
       setAgentAutoReplyEnabled(Boolean(res.data?.running));
+      setAgentStatusUpdatedAt(Date.now());
     } catch {
       setAgentLive(false);
+    } finally {
+      setAgentStatusRefreshing(false);
     }
   };
 
@@ -814,8 +962,8 @@ export default function App() {
           imapHost: String(defaults.imapHost || prev.imapHost),
           smtpHost: String(defaults.smtpHost || prev.smtpHost),
           smtpPort: Number(defaults.smtpPort || prev.smtpPort),
-          pollSeconds: Number(defaults.pollSeconds || prev.pollSeconds),
-          maxMessagesPerCycle: Number(defaults.maxMessagesPerCycle || prev.maxMessagesPerCycle),
+          pollSeconds: Math.max(5, Math.min(60, Number(defaults.pollSeconds || prev.pollSeconds))),
+          maxMessagesPerCycle: clamp(Number(defaults.maxMessagesPerCycle || prev.maxMessagesPerCycle), 0, 5),
           aiProvider: defaults.aiProvider === 'gemini' ? 'gemini' : 'ollama',
           ollamaEndpoint: String(defaults.ollamaEndpoint || prev.ollamaEndpoint),
           ollamaModel: String(defaults.ollamaModel || prev.ollamaModel),
@@ -892,13 +1040,13 @@ export default function App() {
     try {
       await axios.post(`${API_BASE}/agent/auto-reply`, {
         enable_auto_reply: enabled,
-        poll_seconds: agentForm.pollSeconds,
+        poll_seconds: Math.max(5, Math.min(60, Number(agentForm.pollSeconds))),
         agent_email: agentForm.agentEmail,
         gmail_app_password: agentForm.gmailAppPassword,
         imap_host: agentForm.imapHost,
         smtp_host: agentForm.smtpHost,
         smtp_port: agentForm.smtpPort,
-        max_messages_per_cycle: agentForm.maxMessagesPerCycle,
+        max_messages_per_cycle: clamp(Number(agentForm.maxMessagesPerCycle), 0, 5),
         ai_provider: agentForm.aiProvider,
         ollama_endpoint: agentForm.ollamaEndpoint,
         ollama_model: agentForm.ollamaModel,
@@ -943,7 +1091,7 @@ export default function App() {
         imap_host: agentForm.imapHost,
         smtp_host: agentForm.smtpHost,
         smtp_port: agentForm.smtpPort,
-        max_messages_per_cycle: agentForm.maxMessagesPerCycle,
+        max_messages_per_cycle: clamp(Number(agentForm.maxMessagesPerCycle), 0, 5),
         ai_provider: agentForm.aiProvider,
         ollama_endpoint: agentForm.ollamaEndpoint,
         ollama_model: agentForm.ollamaModel,
@@ -985,9 +1133,11 @@ export default function App() {
       setIngestionState('processing');
       const formData = new FormData();
       Array.from(files).forEach((file) => formData.append('files', file));
+      formData.append('profile_row_limit', String(analysisRowLimit));
       try {
         const res = await axios.post(`${API_BASE}/analyze/csv`, formData);
         setAnalysisData(res.data);
+        setLastRunRowLimit(analysisRowLimit);
         setIngestionState('done');
       } catch (err) {
         console.error(err);
@@ -1013,10 +1163,12 @@ export default function App() {
     setIngestionState('processing');
     const formData = new FormData();
     Array.from(files).forEach((file) => formData.append('files', file));
+    formData.append('profile_row_limit', String(analysisRowLimit));
     
     try {
       const res = await axios.post(`${API_BASE}/analyze/csv`, formData);
       setAnalysisData(res.data);
+      setLastRunRowLimit(analysisRowLimit);
       setIngestionState('done');
     } catch (e) {
       console.error(e);
@@ -1031,10 +1183,12 @@ export default function App() {
     
     const formData = new FormData();
     Object.entries(dbForm).forEach(([key, val]) => formData.append(key, val));
+    formData.append('profile_row_limit', String(analysisRowLimit));
 
     try {
       const res = await axios.post(`${API_BASE}/analyze/db`, formData);
       setAnalysisData(res.data);
+      setLastRunRowLimit(analysisRowLimit);
       setIngestionState('done');
     } catch (e) {
       console.error(e);
@@ -1080,19 +1234,37 @@ export default function App() {
         </div>
       )}
 
+      {appView === 'agent-settings' && agentAuthState.ok && (
+        <div className="fixed top-[84px] right-[2.5vw] z-[62] flex items-center gap-2 rounded-xl border border-white/20 dark:border-white/10 bg-white/70 dark:bg-black/45 backdrop-blur-2xl px-3 py-2 shadow-lg">
+          <span
+            className={clsx(
+              'px-2.5 py-1 text-xs font-semibold rounded-lg border inline-flex items-center gap-2',
+              agentLive
+                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-700 dark:text-emerald-300'
+                : 'bg-neutral-500/10 border-neutral-400/30 text-neutral-600 dark:text-neutral-300'
+            )}
+          >
+            <span className={clsx('inline-block w-2 h-2 rounded-full', agentLive ? 'bg-emerald-500 animate-pulse' : 'bg-neutral-400')} />
+            Agent {agentLive ? 'Live' : 'Idle'}
+            {agentStatusUpdatedAt ? ` · ${new Date(agentStatusUpdatedAt).toLocaleTimeString()}` : ''}
+          </span>
+          <button
+            onClick={refreshAgentRuntimeStatus}
+            className="p-1.5 rounded-md border border-black/10 dark:border-white/10 bg-white/70 dark:bg-black/30 hover:bg-white dark:hover:bg-black/50 transition-colors"
+            title="Refresh status"
+            aria-label="Refresh status"
+          >
+            <RefreshCw className={clsx('w-3.5 h-3.5', agentStatusRefreshing && 'animate-spin')} />
+          </button>
+        </div>
+      )}
+
       <main className="relative z-10 pt-20 pb-20 px-6 max-w-6xl mx-auto w-full min-h-[90vh] flex flex-col items-center">
         {appView === 'agent-settings' && agentAuthState.ok ? (
           <div className="w-full mt-12">
             <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-4xl font-light tracking-tight text-neutral-900 dark:text-white">Agent <span className="font-medium text-emerald-500">Settings</span></h2>
-              <span className={clsx(
-                'px-3 py-1.5 text-sm font-semibold rounded-lg border',
-                agentLive
-                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-700 dark:text-emerald-300'
-                  : 'bg-neutral-500/10 border-neutral-400/30 text-neutral-600 dark:text-neutral-300'
-              )}>
-                Agent: {agentLive ? 'Live' : 'Idle'}
-              </span>
+              <div className="text-sm text-neutral-500 dark:text-neutral-400">Realtime status is pinned on the top-right while you scroll.</div>
             </div>
 
             {agentError && <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-700 dark:text-rose-300 text-sm">{agentError}</div>}
@@ -1107,7 +1279,14 @@ export default function App() {
                 <h3 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100">Gmail Configuration</h3>
                 <div className="space-y-3">
                   <input value={agentForm.agentEmail} onChange={(e) => setAgentForm(prev => ({ ...prev, agentEmail: e.target.value }))} placeholder="Agent Gmail" className="w-full px-4 py-3 rounded-lg bg-white/65 dark:bg-black/30 border border-black/10 dark:border-white/10" />
-                  <input type="password" value={agentForm.gmailAppPassword} onChange={(e) => setAgentForm(prev => ({ ...prev, gmailAppPassword: e.target.value }))} placeholder="Gmail App Password" className="w-full px-4 py-3 rounded-lg bg-white/65 dark:bg-black/30 border border-black/10 dark:border-white/10" />
+                  <PasswordField
+                    value={agentForm.gmailAppPassword}
+                    onChange={(next) => setAgentForm(prev => ({ ...prev, gmailAppPassword: next }))}
+                    placeholder="Gmail App Password"
+                    visible={secretVisibility.gmailAppPassword}
+                    onToggle={() => toggleSecretVisibility('gmailAppPassword')}
+                    className="w-full px-4 py-3 rounded-lg bg-white/65 dark:bg-black/30 border border-black/10 dark:border-white/10"
+                  />
                   <input value={agentForm.imapHost} onChange={(e) => setAgentForm(prev => ({ ...prev, imapHost: e.target.value }))} placeholder="IMAP Host" className="w-full px-4 py-3 rounded-lg bg-white/65 dark:bg-black/30 border border-black/10 dark:border-white/10" />
                   <input value={agentForm.smtpHost} onChange={(e) => setAgentForm(prev => ({ ...prev, smtpHost: e.target.value }))} placeholder="SMTP Host" className="w-full px-4 py-3 rounded-lg bg-white/65 dark:bg-black/30 border border-black/10 dark:border-white/10" />
                   <input type="number" min={1} value={agentForm.smtpPort} onChange={(e) => setAgentForm(prev => ({ ...prev, smtpPort: Number(e.target.value || 587) }))} placeholder="SMTP Port" className="w-full px-4 py-3 rounded-lg bg-white/65 dark:bg-black/30 border border-black/10 dark:border-white/10" />
@@ -1135,7 +1314,14 @@ export default function App() {
                     </>
                   ) : (
                     <>
-                      <input type="password" value={agentForm.geminiApiKey} onChange={(e) => setAgentForm(prev => ({ ...prev, geminiApiKey: e.target.value }))} placeholder="Gemini API Key" className="w-full px-4 py-3 rounded-lg bg-white/65 dark:bg-black/30 border border-black/10 dark:border-white/10" />
+                      <PasswordField
+                        value={agentForm.geminiApiKey}
+                        onChange={(next) => setAgentForm(prev => ({ ...prev, geminiApiKey: next }))}
+                        placeholder="Gemini API Key"
+                        visible={secretVisibility.geminiApiKey}
+                        onToggle={() => toggleSecretVisibility('geminiApiKey')}
+                        className="w-full px-4 py-3 rounded-lg bg-white/65 dark:bg-black/30 border border-black/10 dark:border-white/10"
+                      />
                       <input value={agentForm.geminiModel} onChange={(e) => setAgentForm(prev => ({ ...prev, geminiModel: e.target.value }))} placeholder="Gemini Model" className="w-full px-4 py-3 rounded-lg bg-white/65 dark:bg-black/30 border border-black/10 dark:border-white/10" />
                     </>
                   )}
@@ -1148,12 +1334,13 @@ export default function App() {
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium mb-2">Inbox poll interval (seconds)</label>
-                  <input type="range" min={15} max={600} step={15} value={agentForm.pollSeconds} onChange={(e) => setAgentForm(prev => ({ ...prev, pollSeconds: Number(e.target.value) }))} className="w-full" />
+                  <input type="range" min={5} max={60} step={5} value={agentForm.pollSeconds} onChange={(e) => setAgentForm(prev => ({ ...prev, pollSeconds: Number(e.target.value) }))} className="w-full" />
                   <div className="text-sm text-neutral-500 mt-1">{agentForm.pollSeconds} seconds</div>
+                  <div className="text-xs text-amber-700 dark:text-amber-300 mt-1">Hard deadline enforced: every email should be checked/replied within 60 seconds.</div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-2">Max emails per cycle</label>
-                  <input type="range" min={1} max={20} step={1} value={agentForm.maxMessagesPerCycle} onChange={(e) => setAgentForm(prev => ({ ...prev, maxMessagesPerCycle: Number(e.target.value) }))} className="w-full" />
+                  <input type="range" min={0} max={5} step={1} value={agentForm.maxMessagesPerCycle} onChange={(e) => setAgentForm(prev => ({ ...prev, maxMessagesPerCycle: clamp(Number(e.target.value), 0, 5) }))} className="w-full" />
                   <div className="text-sm text-neutral-500 mt-1">{agentForm.maxMessagesPerCycle}</div>
                 </div>
               </div>
@@ -1189,10 +1376,16 @@ export default function App() {
                       const ts = String(event.timestamp || '');
                       const level = String(event.level || 'INFO').toUpperCase();
                       const msg = String(event.message || '');
-                      const metadata = event.metadata ? ` | ${JSON.stringify(event.metadata)}` : '';
+                      const metadata = formatAgentLogMetadata(event.metadata);
+                      const levelTone = level === 'ERROR' ? 'text-rose-600 dark:text-rose-300' : level === 'WARNING' ? 'text-amber-600 dark:text-amber-300' : level === 'DEBUG' ? 'text-sky-600 dark:text-sky-300' : 'text-emerald-600 dark:text-emerald-300';
                       return (
-                        <div key={`${ts}-${idx}`} className="text-xs font-mono text-neutral-700 dark:text-neutral-300 break-words">
-                          [{new Date(ts || Date.now()).toLocaleString()}] [{level}] {msg}{metadata}
+                        <div key={`${ts}-${idx}`} className="rounded-lg border border-black/10 dark:border-white/10 bg-white/70 dark:bg-black/25 px-3 py-2 text-xs break-words">
+                          <div className="flex items-center gap-2 mb-1 text-[11px]">
+                            <span className="text-neutral-500 dark:text-neutral-400">{new Date(ts || Date.now()).toLocaleString()}</span>
+                            <span className={clsx('font-semibold', levelTone)}>{level}</span>
+                          </div>
+                          <div className="text-neutral-800 dark:text-neutral-100">{msg}</div>
+                          {metadata ? <div className="text-neutral-500 dark:text-neutral-400 mt-1">{metadata}</div> : null}
                         </div>
                       );
                     })}
@@ -1214,7 +1407,7 @@ export default function App() {
                 <ArrowRight className="w-5 h-5 text-neutral-600 dark:text-neutral-400 rotate-180 group-hover:-translate-x-1 transition-transform" />
              </button>
              <ErrorBoundary>
-               <DataView activeTab={activeTab === 'editor' ? 'editor' : activeTab} analysisData={analysisData} />
+               <DataView activeTab={activeTab === 'editor' ? 'editor' : activeTab} analysisData={analysisData} processedRowLimit={lastRunRowLimit} />
              </ErrorBoundary>
            </div>
         ) : (
@@ -1242,6 +1435,26 @@ export default function App() {
                     exit={{ opacity: 0, scale: 0.95 }}
                     className="w-full space-y-4"
                   >
+                    <div className="bg-white/40 dark:bg-black/20 backdrop-blur-3xl border border-white/60 dark:border-white/5 rounded-[1.5rem] p-4">
+                      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <div className="text-sm font-medium text-neutral-800 dark:text-neutral-100">Analysis Row Limit</div>
+                          <div className="text-xs text-neutral-500 dark:text-neutral-400">Set to 0 for full scan, or choose up to 1,000,000 rows per table.</div>
+                        </div>
+                        <select
+                          value={String(analysisRowLimit)}
+                          onChange={(e) => setAnalysisRowLimit(Number(e.target.value))}
+                          className="px-3 py-2 rounded-xl bg-white/70 dark:bg-black/40 border border-black/10 dark:border-white/10 text-sm"
+                        >
+                          <option value="5000">5,000 rows</option>
+                          <option value="50000">50,000 rows</option>
+                          <option value="200000">200,000 rows</option>
+                          <option value="1000000">1,000,000 rows</option>
+                          <option value="0">Full scan (all rows)</option>
+                        </select>
+                      </div>
+                    </div>
+
                     <label 
                       className={clsx("group relative flex items-center justify-between p-6 rounded-[2rem] backdrop-blur-3xl border transition-all duration-500 cursor-pointer shadow-[0_8px_30px_rgba(0,0,0,0.02)]", dragActive ? "bg-white/60 dark:bg-white/10 border-[#0059B5] dark:border-[#60A5FA]" : "bg-white/40 dark:bg-black/20 border-white/60 dark:border-white/5 hover:bg-white/60 dark:hover:bg-black/40")}
                       onDragEnter={handleDrag} onDragLeave={handleDrag} onDragOver={handleDrag} onDrop={handleDrop}
@@ -1309,7 +1522,29 @@ export default function App() {
                         
                         <div className="grid grid-cols-2 gap-4">
                           <input required placeholder="Username" value={dbForm.username} onChange={(e) => setDbForm({...dbForm, username: e.target.value})} className="p-4 rounded-xl border-0 ring-1 ring-black/5 dark:ring-white/10 bg-white/50 dark:bg-black/50 text-base font-light focus:outline-none focus:ring-2 focus:ring-[#0059B5] dark:text-white transition-shadow" />
-                          <input required type="password" placeholder="Password" value={dbForm.password} onChange={(e) => setDbForm({...dbForm, password: e.target.value})} className="p-4 rounded-xl border-0 ring-1 ring-black/5 dark:ring-white/10 bg-white/50 dark:bg-black/50 text-base font-light focus:outline-none focus:ring-2 focus:ring-[#0059B5] dark:text-white transition-shadow" />
+                          <PasswordField
+                            value={dbForm.password}
+                            onChange={(next) => setDbForm({ ...dbForm, password: next })}
+                            placeholder="Password"
+                            visible={secretVisibility.dbPassword}
+                            onToggle={() => toggleSecretVisibility('dbPassword')}
+                            className="p-4 rounded-xl border-0 ring-1 ring-black/5 dark:ring-white/10 bg-white/50 dark:bg-black/50 text-base font-light focus:outline-none focus:ring-2 focus:ring-[#0059B5] dark:text-white transition-shadow"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">Analysis Row Limit</label>
+                          <select
+                            value={String(analysisRowLimit)}
+                            onChange={(e) => setAnalysisRowLimit(Number(e.target.value))}
+                            className="w-full p-4 rounded-xl border-0 ring-1 ring-black/5 dark:ring-white/10 bg-white/50 dark:bg-black/50 text-base font-light focus:outline-none focus:ring-2 focus:ring-[#0059B5] dark:text-white transition-shadow"
+                          >
+                            <option value="5000">5,000 rows</option>
+                            <option value="50000">50,000 rows</option>
+                            <option value="200000">200,000 rows</option>
+                            <option value="1000000">1,000,000 rows</option>
+                            <option value="0">Full scan (all rows)</option>
+                          </select>
                         </div>
                       </div>
                       
@@ -1394,7 +1629,14 @@ export default function App() {
                       <h4 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">Authenticate</h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <input value={agentForm.firebaseLoginEmail} onChange={(e) => setAgentForm(prev => ({ ...prev, firebaseLoginEmail: e.target.value }))} placeholder="Firebase Email" className="px-4 py-3 rounded-xl bg-white/60 dark:bg-black/30 border border-black/10 dark:border-white/10" />
-                        <input type="password" value={agentForm.firebaseLoginPassword} onChange={(e) => setAgentForm(prev => ({ ...prev, firebaseLoginPassword: e.target.value }))} placeholder="Firebase Password" className="px-4 py-3 rounded-xl bg-white/60 dark:bg-black/30 border border-black/10 dark:border-white/10" />
+                        <PasswordField
+                          value={agentForm.firebaseLoginPassword}
+                          onChange={(next) => setAgentForm(prev => ({ ...prev, firebaseLoginPassword: next }))}
+                          placeholder="Firebase Password"
+                          visible={secretVisibility.firebaseLoginPassword}
+                          onToggle={() => toggleSecretVisibility('firebaseLoginPassword')}
+                          className="px-4 py-3 rounded-xl bg-white/60 dark:bg-black/30 border border-black/10 dark:border-white/10"
+                        />
                       </div>
                       <button
                         onClick={handleAgentLogin}
@@ -1413,11 +1655,18 @@ export default function App() {
                     <p className="text-sm text-emerald-700 dark:text-emerald-300">Authenticated as {agentAuthState.email}</p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <input value={agentForm.agentEmail} onChange={(e) => setAgentForm(prev => ({ ...prev, agentEmail: e.target.value }))} placeholder="Agent Gmail" className="px-4 py-3 rounded-xl bg-white/60 dark:bg-black/30 border border-black/10 dark:border-white/10" />
-                      <input type="password" value={agentForm.gmailAppPassword} onChange={(e) => setAgentForm(prev => ({ ...prev, gmailAppPassword: e.target.value }))} placeholder="Gmail App Password" className="px-4 py-3 rounded-xl bg-white/60 dark:bg-black/30 border border-black/10 dark:border-white/10" />
+                      <PasswordField
+                        value={agentForm.gmailAppPassword}
+                        onChange={(next) => setAgentForm(prev => ({ ...prev, gmailAppPassword: next }))}
+                        placeholder="Gmail App Password"
+                        visible={secretVisibility.gmailAppPassword}
+                        onToggle={() => toggleSecretVisibility('gmailAppPassword')}
+                        className="px-4 py-3 rounded-xl bg-white/60 dark:bg-black/30 border border-black/10 dark:border-white/10"
+                      />
                       <input value={agentForm.imapHost} onChange={(e) => setAgentForm(prev => ({ ...prev, imapHost: e.target.value }))} placeholder="IMAP Host" className="px-4 py-3 rounded-xl bg-white/60 dark:bg-black/30 border border-black/10 dark:border-white/10" />
                       <input value={agentForm.smtpHost} onChange={(e) => setAgentForm(prev => ({ ...prev, smtpHost: e.target.value }))} placeholder="SMTP Host" className="px-4 py-3 rounded-xl bg-white/60 dark:bg-black/30 border border-black/10 dark:border-white/10" />
                       <input type="number" min={1} value={agentForm.smtpPort} onChange={(e) => setAgentForm(prev => ({ ...prev, smtpPort: Number(e.target.value || 587) }))} placeholder="SMTP Port" className="px-4 py-3 rounded-xl bg-white/60 dark:bg-black/30 border border-black/10 dark:border-white/10" />
-                      <input type="number" min={1} max={20} value={agentForm.maxMessagesPerCycle} onChange={(e) => setAgentForm(prev => ({ ...prev, maxMessagesPerCycle: Number(e.target.value || 5) }))} placeholder="Max Emails Per Cycle" className="px-4 py-3 rounded-xl bg-white/60 dark:bg-black/30 border border-black/10 dark:border-white/10" />
+                      <input type="number" min={0} max={5} value={agentForm.maxMessagesPerCycle} onChange={(e) => setAgentForm(prev => ({ ...prev, maxMessagesPerCycle: clamp(Number(e.target.value || 0), 0, 5) }))} placeholder="Max Emails Per Cycle" className="px-4 py-3 rounded-xl bg-white/60 dark:bg-black/30 border border-black/10 dark:border-white/10" />
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1453,7 +1702,14 @@ export default function App() {
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <input type="password" value={agentForm.geminiApiKey} onChange={(e) => setAgentForm(prev => ({ ...prev, geminiApiKey: e.target.value }))} placeholder="Gemini API Key" className="px-4 py-3 rounded-xl bg-white/60 dark:bg-black/30 border border-black/10 dark:border-white/10" />
+                        <PasswordField
+                          value={agentForm.geminiApiKey}
+                          onChange={(next) => setAgentForm(prev => ({ ...prev, geminiApiKey: next }))}
+                          placeholder="Gemini API Key"
+                          visible={secretVisibility.geminiApiKey}
+                          onToggle={() => toggleSecretVisibility('geminiApiKey')}
+                          className="px-4 py-3 rounded-xl bg-white/60 dark:bg-black/30 border border-black/10 dark:border-white/10"
+                        />
                         <input value={agentForm.geminiModel} onChange={(e) => setAgentForm(prev => ({ ...prev, geminiModel: e.target.value }))} placeholder="Gemini Model" className="px-4 py-3 rounded-xl bg-white/60 dark:bg-black/30 border border-black/10 dark:border-white/10" />
                       </div>
                     )}
@@ -1486,10 +1742,16 @@ export default function App() {
                             const ts = String(event.timestamp || '');
                             const level = String(event.level || 'INFO').toUpperCase();
                             const msg = String(event.message || '');
-                            const metadata = event.metadata ? ` | ${JSON.stringify(event.metadata)}` : '';
+                            const metadata = formatAgentLogMetadata(event.metadata);
+                            const levelTone = level === 'ERROR' ? 'text-rose-600 dark:text-rose-300' : level === 'WARNING' ? 'text-amber-600 dark:text-amber-300' : level === 'DEBUG' ? 'text-sky-600 dark:text-sky-300' : 'text-emerald-600 dark:text-emerald-300';
                             return (
-                              <div key={`${ts}-${idx}`} className="text-xs font-mono text-neutral-700 dark:text-neutral-300 break-words">
-                                [{new Date(ts || Date.now()).toLocaleString()}] [{level}] {msg}{metadata}
+                              <div key={`${ts}-${idx}`} className="rounded-lg border border-black/10 dark:border-white/10 bg-white/70 dark:bg-black/25 px-3 py-2 text-xs break-words">
+                                <div className="flex items-center gap-2 mb-1 text-[11px]">
+                                  <span className="text-neutral-500 dark:text-neutral-400">{new Date(ts || Date.now()).toLocaleString()}</span>
+                                  <span className={clsx('font-semibold', levelTone)}>{level}</span>
+                                </div>
+                                <div className="text-neutral-800 dark:text-neutral-100">{msg}</div>
+                                {metadata ? <div className="text-neutral-500 dark:text-neutral-400 mt-1">{metadata}</div> : null}
                               </div>
                             );
                           })}

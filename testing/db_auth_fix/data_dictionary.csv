@@ -1,0 +1,4 @@
+table,column,data_type,role,is_primary_candidate,null_percent,unique_percent,quality_note,example_values,description
+students,student_id,int64,identifier,True,0.0,100.0,Review recommended,"1, 2",student_id is a identifier field in students.
+students,name,object,descriptive text,True,0.0,100.0,High quality,"Asha, Ravi",name is a descriptive text field in students.
+students,created_at,datetime64[ns],time dimension,False,0.0,50.0,High quality,"2026-03-20 22:19:43, 2026-03-20 22:19:43",created_at is a time dimension field in students.

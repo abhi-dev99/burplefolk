@@ -1,0 +1,323 @@
+{
+  "generated_at": "2026-03-20T21:29:32.842330+00:00",
+  "source_type": "CSV Bundle",
+  "avg_quality_score": 92.02,
+  "table_profiles": [
+    {
+      "table": "stores",
+      "sample_rows": 3,
+      "estimated_total_rows": 3,
+      "column_count": 8,
+      "pk_candidates": [
+        "store_id"
+      ],
+      "duplicate_pk_records": 0,
+      "quality_score": 93.54,
+      "completeness_score": 100.0,
+      "consistency_score": 95.83,
+      "freshness_score": 75.0,
+      "issues": [],
+      "column_profiles": [
+        {
+          "table": "stores",
+          "column": "store_id",
+          "sample_dtype": "int64",
+          "semantic_role": "identifier",
+          "null_percent": 0.0,
+          "unique_percent": 100.0,
+          "dominant_value_type": "numeric",
+          "type_consistency": 0.667,
+          "freshness_lag_days": null,
+          "sample_values": "1, 2, 3"
+        },
+        {
+          "table": "stores",
+          "column": "store_name",
+          "sample_dtype": "object",
+          "semantic_role": "descriptive text",
+          "null_percent": 0.0,
+          "unique_percent": 100.0,
+          "dominant_value_type": "text",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "Santa Cruz Bikes, Baldwin Bikes, Rowlett Bikes"
+        },
+        {
+          "table": "stores",
+          "column": "phone",
+          "sample_dtype": "object",
+          "semantic_role": "general attribute",
+          "null_percent": 0.0,
+          "unique_percent": 100.0,
+          "dominant_value_type": "text",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "(831) 476-4321, (516) 379-8888, (972) 530-5555"
+        },
+        {
+          "table": "stores",
+          "column": "email",
+          "sample_dtype": "object",
+          "semantic_role": "general attribute",
+          "null_percent": 0.0,
+          "unique_percent": 100.0,
+          "dominant_value_type": "text",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "santacruz@bikes.shop, baldwin@bikes.shop, rowlett@bikes.shop"
+        },
+        {
+          "table": "stores",
+          "column": "street",
+          "sample_dtype": "object",
+          "semantic_role": "general attribute",
+          "null_percent": 0.0,
+          "unique_percent": 100.0,
+          "dominant_value_type": "text",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "3700 Portola Drive, 4200 Chestnut Lane, 8000 Fairway Avenue"
+        },
+        {
+          "table": "stores",
+          "column": "city",
+          "sample_dtype": "object",
+          "semantic_role": "general attribute",
+          "null_percent": 0.0,
+          "unique_percent": 100.0,
+          "dominant_value_type": "text",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "Santa Cruz, Baldwin, Rowlett"
+        },
+        {
+          "table": "stores",
+          "column": "state",
+          "sample_dtype": "object",
+          "semantic_role": "categorical attribute",
+          "null_percent": 0.0,
+          "unique_percent": 100.0,
+          "dominant_value_type": "text",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "CA, NY, TX"
+        },
+        {
+          "table": "stores",
+          "column": "zip_code",
+          "sample_dtype": "int64",
+          "semantic_role": "general attribute",
+          "null_percent": 0.0,
+          "unique_percent": 100.0,
+          "dominant_value_type": "numeric",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "95060, 11432, 75088"
+        }
+      ]
+    },
+    {
+      "table": "stocks",
+      "sample_rows": 939,
+      "estimated_total_rows": 939,
+      "column_count": 3,
+      "pk_candidates": [
+        "store_id",
+        "product_id"
+      ],
+      "duplicate_pk_records": 1562,
+      "quality_score": 90.27,
+      "completeness_score": 100.0,
+      "consistency_score": 86.48,
+      "freshness_score": 75.0,
+      "issues": [
+        "stocks.store_id appears identifier-like but has low uniqueness (0.3%).",
+        "stocks.product_id appears identifier-like but has low uniqueness (33.3%).",
+        "stocks.store_id has 936 duplicate values in analyzed sample.",
+        "stocks.product_id has 626 duplicate values in analyzed sample."
+      ],
+      "column_profiles": [
+        {
+          "table": "stocks",
+          "column": "store_id",
+          "sample_dtype": "int64",
+          "semantic_role": "identifier",
+          "null_percent": 0.0,
+          "unique_percent": 0.32,
+          "dominant_value_type": "numeric",
+          "type_consistency": 0.667,
+          "freshness_lag_days": null,
+          "sample_values": "1, 1, 1"
+        },
+        {
+          "table": "stocks",
+          "column": "product_id",
+          "sample_dtype": "int64",
+          "semantic_role": "identifier",
+          "null_percent": 0.0,
+          "unique_percent": 33.33,
+          "dominant_value_type": "numeric",
+          "type_consistency": 0.997,
+          "freshness_lag_days": null,
+          "sample_values": "1, 2, 3"
+        },
+        {
+          "table": "stocks",
+          "column": "quantity",
+          "sample_dtype": "int64",
+          "semantic_role": "general attribute",
+          "null_percent": 0.0,
+          "unique_percent": 3.3,
+          "dominant_value_type": "numeric",
+          "type_consistency": 0.931,
+          "freshness_lag_days": null,
+          "sample_values": "27, 5, 6"
+        }
+      ]
+    },
+    {
+      "table": "staffs",
+      "sample_rows": 10,
+      "estimated_total_rows": 10,
+      "column_count": 8,
+      "pk_candidates": [
+        "staff_id"
+      ],
+      "duplicate_pk_records": 0,
+      "quality_score": 92.25,
+      "completeness_score": 98.75,
+      "consistency_score": 93.75,
+      "freshness_score": 75.0,
+      "issues": [
+        "staffs.store_id appears identifier-like but has low uniqueness (30.0%).",
+        "staffs.manager_id appears identifier-like but has low uniqueness (44.4%)."
+      ],
+      "column_profiles": [
+        {
+          "table": "staffs",
+          "column": "staff_id",
+          "sample_dtype": "int64",
+          "semantic_role": "identifier",
+          "null_percent": 0.0,
+          "unique_percent": 100.0,
+          "dominant_value_type": "numeric",
+          "type_consistency": 0.9,
+          "freshness_lag_days": null,
+          "sample_values": "1, 2, 3"
+        },
+        {
+          "table": "staffs",
+          "column": "first_name",
+          "sample_dtype": "object",
+          "semantic_role": "descriptive text",
+          "null_percent": 0.0,
+          "unique_percent": 100.0,
+          "dominant_value_type": "text",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "Fabiola, Mireya, Genna"
+        },
+        {
+          "table": "staffs",
+          "column": "last_name",
+          "sample_dtype": "object",
+          "semantic_role": "descriptive text",
+          "null_percent": 0.0,
+          "unique_percent": 100.0,
+          "dominant_value_type": "text",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "Jackson, Copeland, Serrano"
+        },
+        {
+          "table": "staffs",
+          "column": "email",
+          "sample_dtype": "object",
+          "semantic_role": "general attribute",
+          "null_percent": 0.0,
+          "unique_percent": 100.0,
+          "dominant_value_type": "text",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "fabiola.jackson@bikes.shop, mireya.copeland@bikes.shop, genna.serrano@bikes.shop"
+        },
+        {
+          "table": "staffs",
+          "column": "phone",
+          "sample_dtype": "object",
+          "semantic_role": "general attribute",
+          "null_percent": 0.0,
+          "unique_percent": 100.0,
+          "dominant_value_type": "text",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "(831) 555-5554, (831) 555-5555, (831) 555-5556"
+        },
+        {
+          "table": "staffs",
+          "column": "active",
+          "sample_dtype": "int64",
+          "semantic_role": "general attribute",
+          "null_percent": 0.0,
+          "unique_percent": 10.0,
+          "dominant_value_type": "boolean",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "1, 1, 1"
+        },
+        {
+          "table": "staffs",
+          "column": "store_id",
+          "sample_dtype": "int64",
+          "semantic_role": "identifier",
+          "null_percent": 0.0,
+          "unique_percent": 30.0,
+          "dominant_value_type": "numeric",
+          "type_consistency": 0.6,
+          "freshness_lag_days": null,
+          "sample_values": "1, 1, 1"
+        },
+        {
+          "table": "staffs",
+          "column": "manager_id",
+          "sample_dtype": "float64",
+          "semantic_role": "identifier",
+          "null_percent": 10.0,
+          "unique_percent": 44.44,
+          "dominant_value_type": "numeric",
+          "type_consistency": 1.0,
+          "freshness_lag_days": null,
+          "sample_values": "1.0, 2.0, 2.0"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "child_table": "stocks",
+      "child_column": "store_id",
+      "parent_table": "stores",
+      "parent_column": "store_id",
+      "relation_type": "many-to-one",
+      "confidence": 1.0
+    },
+    {
+      "child_table": "staffs",
+      "child_column": "store_id",
+      "parent_table": "stores",
+      "parent_column": "store_id",
+      "relation_type": "many-to-one",
+      "confidence": 1.0
+    },
+    {
+      "child_table": "staffs",
+      "child_column": "manager_id",
+      "parent_table": "staffs",
+      "parent_column": "staff_id",
+      "relation_type": "many-to-one",
+      "confidence": 0.895
+    }
+  ],
+  "business_context": "Nexus detected a relational environment with cross-table dependencies and operational telemetry.\nLargest table by volume: stocks (939 rows).\nRelationships discovered: 3 candidate foreign-key links.\nData quality risks are concentrated in: stocks (90.27%), staffs (92.25%), stores (93.54%).\n\nPrioritize key constraints and missingness remediation in low-score tables.\nUse relationship confidence above 0.75 for direct ER governance, and manually review the rest.\nOperationalize dictionary exports as a living contract for analytics and application teams.",
+  "ai_brief": ""
+}

@@ -1,0 +1,4 @@
+table,quality_score,completeness_score,consistency_score,freshness_score,duplicate_pk_records,issues
+stores,93.54,100.0,95.83,75.0,0,
+stocks,90.27,100.0,86.48,75.0,1562,stocks.store_id appears identifier-like but has low uniqueness (0.3%). | stocks.product_id appears identifier-like but has low uniqueness (33.3%). | stocks.store_id has 936 duplicate values in analyzed sample. | stocks.product_id has 626 duplicate values in analyzed sample.
+staffs,92.25,98.75,93.75,75.0,0,staffs.store_id appears identifier-like but has low uniqueness (30.0%). | staffs.manager_id appears identifier-like but has low uniqueness (44.4%).

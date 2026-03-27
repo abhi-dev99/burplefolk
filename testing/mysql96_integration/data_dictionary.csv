@@ -1,0 +1,25 @@
+table,column,data_type,role,is_primary_candidate,null_percent,unique_percent,quality_note,example_values,description
+city,ID,int64,identifier,True,0.0,100.0,High quality,"1, 2, 3",ID is a identifier field in city.
+city,Name,object,descriptive text,False,0.0,98.09,High quality,"Kabul, Qandahar, Herat",Name is a descriptive text field in city.
+city,CountryCode,object,general attribute,False,0.0,5.69,High quality,"AFG, AFG, AFG",CountryCode is a general attribute field in city.
+city,District,object,general attribute,False,0.0,33.51,High quality,"Kabol, Qandahar, Herat",District is a general attribute field in city.
+city,Population,int64,geospatial attribute,False,0.0,95.54,High quality,"1780000, 237500, 186800",Population is a geospatial attribute field in city.
+country,Code,object,general attribute,True,0.0,100.0,High quality,"ABW, AFG, AGO",Code is a general attribute field in country.
+country,Name,object,descriptive text,True,0.0,100.0,High quality,"Aruba, Afghanistan, Angola",Name is a descriptive text field in country.
+country,Continent,object,general attribute,False,0.0,2.93,High quality,"North America, Asia, Africa",Continent is a general attribute field in country.
+country,Region,object,general attribute,False,0.0,10.46,High quality,"Caribbean, Southern and Central Asia, Central Africa",Region is a general attribute field in country.
+country,SurfaceArea,float64,general attribute,False,0.0,99.58,High quality,"193.0, 652090.0, 1246700.0",SurfaceArea is a general attribute field in country.
+country,IndepYear,float64,general attribute,False,19.67,45.83,Review recommended,"1919.0, 1975.0, 1912.0",IndepYear is a general attribute field in country.
+country,Population,int64,geospatial attribute,False,0.0,94.56,High quality,"103000, 22720000, 12878000",Population is a geospatial attribute field in country.
+country,LifeExpectancy,float64,general attribute,False,7.11,72.07,High quality,"78.4, 45.9, 38.3",LifeExpectancy is a general attribute field in country.
+country,GNP,float64,general attribute,False,0.0,89.54,High quality,"828.0, 5976.0, 6648.0",GNP is a general attribute field in country.
+country,GNPOld,float64,general attribute,False,25.52,100.0,Review recommended,"793.0, 7984.0, 2500.0",GNPOld is a general attribute field in country.
+country,LocalName,object,descriptive text,True,0.0,100.0,High quality,"Aruba, Afganistan/Afqanestan, Angola",LocalName is a descriptive text field in country.
+country,GovernmentForm,object,general attribute,False,0.0,14.64,High quality,"Nonmetropolitan Territory of The Netherlands, Islamic Emirate, Republic",GovernmentForm is a general attribute field in country.
+country,HeadOfState,object,categorical attribute,False,0.42,75.21,High quality,"Beatrix, Mohammad Omar, José Eduardo dos Santos",HeadOfState is a categorical attribute field in country.
+country,Capital,float64,general attribute,False,2.93,100.0,High quality,"129.0, 1.0, 56.0",Capital is a general attribute field in country.
+country,Code2,object,general attribute,False,0.0,100.0,High quality,"AW, AF, AO",Code2 is a general attribute field in country.
+countrylanguage,CountryCode,object,general attribute,False,0.0,23.68,High quality,"ABW, ABW, ABW",CountryCode is a general attribute field in countrylanguage.
+countrylanguage,Language,object,general attribute,False,0.0,46.54,High quality,"Dutch, English, Papiamento",Language is a general attribute field in countrylanguage.
+countrylanguage,IsOfficial,object,general attribute,False,0.0,0.2,High quality,"T, F, F",IsOfficial is a general attribute field in countrylanguage.
+countrylanguage,Percentage,float64,general attribute,False,0.0,36.28,High quality,"5.3, 9.5, 76.7",Percentage is a general attribute field in countrylanguage.

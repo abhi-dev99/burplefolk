@@ -1,0 +1,307 @@
+
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --text: #0f172a;
+      --head-bg: #dbeafe;
+      --head-stroke: #1d4ed8;
+      --body-stroke: #93c5fd;
+      --line: #1e3a8a;
+      --line-soft: #cbd5e1;
+      --pk: #1d4ed8;
+      --fk: #b91c1c;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Space Grotesk', 'Segoe UI', sans-serif;
+    }
+    .erd-shell {
+      width: 100%;
+      height: 720px;
+      border: 1px solid rgba(164, 182, 199, 0.35);
+      border-radius: 10px;
+      background: var(--bg);
+      overflow: hidden;
+      position: relative;
+    }
+    .erd-toolbar {
+      position: absolute;
+      top: 8px;
+      right: 10px;
+      z-index: 2;
+      display: flex;
+      gap: 8px;
+    }
+    .erd-toolbar button {
+      border: 1px solid #94a3b8;
+      background: #ffffff;
+      color: #0f172a;
+      border-radius: 8px;
+      padding: 5px 10px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .erd-toolbar button:hover {
+      background: #f1f5f9;
+    }
+    .erd-note {
+      position: absolute;
+      top: 10px;
+      left: 12px;
+      z-index: 2;
+      font-size: 12px;
+      color: #475569;
+    }
+    .erd-canvas {
+      position: absolute;
+      inset: 0;
+      overflow: auto;
+      cursor: grab;
+    }
+    .erd-canvas.dragging {
+      cursor: grabbing;
+    }
+    .rel-line {
+      stroke: var(--line);
+      stroke-width: 1.8;
+      opacity: 0.92;
+    }
+    .rel-label {
+      font-size: 11px;
+      fill: #0f172a;
+      paint-order: stroke;
+      stroke: #ffffff;
+      stroke-width: 3;
+      stroke-linejoin: round;
+    }
+    .entity-body {
+      fill: #ffffff;
+      stroke: var(--body-stroke);
+      stroke-width: 1.3;
+    }
+    .entity-head {
+      fill: var(--head-bg);
+      stroke: var(--head-stroke);
+      stroke-width: 1.3;
+    }
+    .entity-title {
+      font-size: 13px;
+      font-weight: 700;
+      fill: #0f172a;
+      letter-spacing: 0.3px;
+    }
+    .row-sep {
+      stroke: var(--line-soft);
+      stroke-width: 1;
+    }
+    .col-dtype {
+      font-size: 10px;
+      font-weight: 700;
+      fill: #475569;
+    }
+    .col-name {
+      font-size: 11px;
+      fill: #0f172a;
+    }
+    .col-role {
+      font-size: 10px;
+      font-weight: 700;
+    }
+    .col-role.pk { fill: var(--pk); }
+    .col-role.fk { fill: var(--fk); }
+  </style>
+</head>
+<body>
+  <div class="erd-shell" id="erd-shell">
+    <div class="erd-toolbar">
+      <button type="button" onclick="zoomOutErd()">-</button>
+      <button type="button" onclick="zoomInErd()">+</button>
+      <button type="button" onclick="fitErd()">Fit</button>
+      <button type="button" onclick="resetErd()">Reset</button>
+    </div>
+    <div class="erd-note">Drag to pan. Use mouse wheel or +/- to zoom.</div>
+    <div class="erd-canvas" id="erd-canvas">
+      <svg id="erd-svg" xmlns="http://www.w3.org/2000/svg" width="974" height="546" viewBox="0 0 974 546" role="img" aria-label="Entity relationship diagram">
+<defs>
+<marker id="erd-arrow" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto" markerUnits="strokeWidth"><polygon points="0 0, 9 3.5, 0 7" fill="#1e3a8a" /></marker>
+</defs>
+<g id="erd-viewport">
+<path d="M 754.0 66.0 C 822.0 30.0, 822.0 102.0, 754.0 140.0" class="rel-line" marker-end="url(#erd-arrow)" fill="none" />
+<text x="826.0" y="84.0" class="rel-label" text-anchor="middle">manager_id-&gt;staff_id</text>
+<path d="M 324.0 127.0 C 389.0 127.0, 389.0 127.0, 454.0 127.0" class="rel-line" marker-end="url(#erd-arrow)" fill="none" />
+<text x="389.0" y="121.0" class="rel-label" text-anchor="middle">store_id</text>
+<path d="M 324.0 127.0 C 389.0 127.0, 389.0 313.0, 454.0 313.0" class="rel-line" marker-end="url(#erd-arrow)" fill="none" />
+<text x="389.0" y="214.0" class="rel-label" text-anchor="middle">store_id</text>
+<g class="entity" transform="translate(454.0,24.0)">
+<rect class="entity-body" x="0" y="0" width="300" height="206" rx="10" ry="10" />
+<rect class="entity-head" x="0" y="0" width="300" height="34" rx="10" ry="10" />
+<text class="entity-title" x="12" y="22">STAFFS</text>
+<text class="col-dtype" x="10" y="48">INT</text>
+<text class="col-name" x="96" y="48">staff_id</text>
+<text class="col-role pk" x="290" y="48" text-anchor="end">PK</text>
+<line class="row-sep" x1="0" y1="54" x2="300" y2="54" />
+<text class="col-dtype" x="10" y="68">INT</text>
+<text class="col-name" x="96" y="68">store_id</text>
+<text class="col-role fk" x="290" y="68" text-anchor="end">FK</text>
+<line class="row-sep" x1="0" y1="74" x2="300" y2="74" />
+<text class="col-dtype" x="10" y="88">INT</text>
+<text class="col-name" x="96" y="88">manager_id</text>
+<text class="col-role fk" x="290" y="88" text-anchor="end">FK</text>
+<line class="row-sep" x1="0" y1="94" x2="300" y2="94" />
+<text class="col-dtype" x="10" y="108">STRING</text>
+<text class="col-name" x="96" y="108">first_name</text>
+<line class="row-sep" x1="0" y1="114" x2="300" y2="114" />
+<text class="col-dtype" x="10" y="128">STRING</text>
+<text class="col-name" x="96" y="128">last_name</text>
+<line class="row-sep" x1="0" y1="134" x2="300" y2="134" />
+<text class="col-dtype" x="10" y="148">STRING</text>
+<text class="col-name" x="96" y="148">email</text>
+<line class="row-sep" x1="0" y1="154" x2="300" y2="154" />
+<text class="col-dtype" x="10" y="168">STRING</text>
+<text class="col-name" x="96" y="168">phone</text>
+<line class="row-sep" x1="0" y1="174" x2="300" y2="174" />
+<text class="col-dtype" x="10" y="188">INT</text>
+<text class="col-name" x="96" y="188">active</text>
+</g>
+<g class="entity" transform="translate(454.0,260.0)">
+<rect class="entity-body" x="0" y="0" width="300" height="106" rx="10" ry="10" />
+<rect class="entity-head" x="0" y="0" width="300" height="34" rx="10" ry="10" />
+<text class="entity-title" x="12" y="22">STOCKS</text>
+<text class="col-dtype" x="10" y="48">INT</text>
+<text class="col-name" x="96" y="48">store_id</text>
+<text class="col-role pk" x="290" y="48" text-anchor="end">PK</text>
+<line class="row-sep" x1="0" y1="54" x2="300" y2="54" />
+<text class="col-dtype" x="10" y="68">INT</text>
+<text class="col-name" x="96" y="68">product_id</text>
+<text class="col-role pk" x="290" y="68" text-anchor="end">PK</text>
+<line class="row-sep" x1="0" y1="74" x2="300" y2="74" />
+<text class="col-dtype" x="10" y="88">INT</text>
+<text class="col-name" x="96" y="88">quantity</text>
+</g>
+<g class="entity" transform="translate(24.0,24.0)">
+<rect class="entity-body" x="0" y="0" width="300" height="206" rx="10" ry="10" />
+<rect class="entity-head" x="0" y="0" width="300" height="34" rx="10" ry="10" />
+<text class="entity-title" x="12" y="22">STORES</text>
+<text class="col-dtype" x="10" y="48">INT</text>
+<text class="col-name" x="96" y="48">store_id</text>
+<text class="col-role pk" x="290" y="48" text-anchor="end">PK</text>
+<line class="row-sep" x1="0" y1="54" x2="300" y2="54" />
+<text class="col-dtype" x="10" y="68">STRING</text>
+<text class="col-name" x="96" y="68">store_name</text>
+<line class="row-sep" x1="0" y1="74" x2="300" y2="74" />
+<text class="col-dtype" x="10" y="88">STRING</text>
+<text class="col-name" x="96" y="88">phone</text>
+<line class="row-sep" x1="0" y1="94" x2="300" y2="94" />
+<text class="col-dtype" x="10" y="108">STRING</text>
+<text class="col-name" x="96" y="108">email</text>
+<line class="row-sep" x1="0" y1="114" x2="300" y2="114" />
+<text class="col-dtype" x="10" y="128">STRING</text>
+<text class="col-name" x="96" y="128">street</text>
+<line class="row-sep" x1="0" y1="134" x2="300" y2="134" />
+<text class="col-dtype" x="10" y="148">STRING</text>
+<text class="col-name" x="96" y="148">city</text>
+<line class="row-sep" x1="0" y1="154" x2="300" y2="154" />
+<text class="col-dtype" x="10" y="168">STRING</text>
+<text class="col-name" x="96" y="168">state</text>
+<line class="row-sep" x1="0" y1="174" x2="300" y2="174" />
+<text class="col-dtype" x="10" y="188">INT</text>
+<text class="col-name" x="96" y="188">zip_code</text>
+</g>
+</g>
+</svg>
+    </div>
+  </div>
+
+  <script>
+    const shell = document.getElementById('erd-shell');
+    const canvas = document.getElementById('erd-canvas');
+    const viewport = document.getElementById('erd-viewport');
+
+    let scale = 1;
+    let tx = 24;
+    let ty = 24;
+    let dragging = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let startTx = 0;
+    let startTy = 0;
+
+    const minScale = 0.35;
+    const maxScale = 2.8;
+
+    const applyTransform = () => {
+      viewport.setAttribute('transform', `translate(${tx} ${ty}) scale(${scale})`);
+    };
+
+    const clampScale = (value) => Math.max(minScale, Math.min(maxScale, value));
+
+    window.zoomInErd = () => {
+      scale = clampScale(scale * 1.12);
+      applyTransform();
+    };
+
+    window.zoomOutErd = () => {
+      scale = clampScale(scale * 0.89);
+      applyTransform();
+    };
+
+    window.resetErd = () => {
+      scale = 1;
+      tx = 24;
+      ty = 24;
+      applyTransform();
+    };
+
+    window.fitErd = () => {
+      const width = 974;
+      const height = 546;
+      const targetW = shell.clientWidth - 48;
+      const targetH = shell.clientHeight - 48;
+      if (targetW <= 0 || targetH <= 0) return;
+
+      scale = clampScale(Math.min(targetW / width, targetH / height));
+      tx = 20;
+      ty = 20;
+      applyTransform();
+    };
+
+    canvas.addEventListener('wheel', (event) => {
+      event.preventDefault();
+      const factor = event.deltaY < 0 ? 1.08 : 0.92;
+      scale = clampScale(scale * factor);
+      applyTransform();
+    }, { passive: false });
+
+    canvas.addEventListener('mousedown', (event) => {
+      dragging = true;
+      canvas.classList.add('dragging');
+      dragStartX = event.clientX;
+      dragStartY = event.clientY;
+      startTx = tx;
+      startTy = ty;
+    });
+
+    window.addEventListener('mousemove', (event) => {
+      if (!dragging) return;
+      tx = startTx + (event.clientX - dragStartX);
+      ty = startTy + (event.clientY - dragStartY);
+      applyTransform();
+    });
+
+    window.addEventListener('mouseup', () => {
+      dragging = false;
+      canvas.classList.remove('dragging');
+    });
+
+    applyTransform();
+  </script>
+</body>
+</html>
