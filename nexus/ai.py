@@ -266,26 +266,42 @@ def _generate_gemini_brief(analysis: Dict, model: str, api_key: str, timeout_sec
     }
 
     attempted: List[str] = []
-    candidate_models = _candidate_gemini_models(selected_model, api_key, timeout_seconds=min(timeout_seconds, 12))
+    # Keep Gemini retries bounded so UI does not appear stuck for minutes.
+    candidate_models = _candidate_gemini_models(selected_model, api_key, timeout_seconds=min(timeout_seconds, 12))[:3]
+    hard_timeout = max(15, int(timeout_seconds))
+    deadline = time.monotonic() + hard_timeout
+    saw_timeout = False
 
     for candidate_model in candidate_models:
         attempted.append(candidate_model)
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{candidate_model}:generateContent?key={api_key.strip()}"
 
-        for attempt in range(3):
+        for attempt in range(2):
+            remaining = int(deadline - time.monotonic())
+            if remaining <= 1:
+                raise RuntimeError(
+                    f"Gemini request timed out after {hard_timeout}s. Try a smaller model or increase timeout."
+                )
+            request_timeout = max(5, min(20, remaining))
             try:
-                response = requests.post(url, json=payload, timeout=timeout_seconds)
+                response = requests.post(url, json=payload, timeout=request_timeout)
             except requests.Timeout as exc:
-                raise RuntimeError(f"Gemini request timed out after {timeout_seconds}s.") from exc
+                saw_timeout = True
+                if attempt < 1:
+                    continue
+                break
 
             if response.status_code == 429:
-                if attempt < 2:
+                if attempt < 1:
                     retry_after_header = response.headers.get("Retry-After", "").strip()
                     try:
                         wait_seconds = max(1, int(float(retry_after_header))) if retry_after_header else (attempt + 1) * 2
                     except ValueError:
                         wait_seconds = (attempt + 1) * 2
-                    time.sleep(wait_seconds)
+                    remaining = int(deadline - time.monotonic())
+                    if remaining <= 1:
+                        break
+                    time.sleep(min(wait_seconds, max(1, remaining - 1)))
                     continue
 
                 # Try next model if the current one is quota-limited.
@@ -325,6 +341,10 @@ def _generate_gemini_brief(analysis: Dict, model: str, api_key: str, timeout_sec
             return text
 
     tried = ", ".join(attempted)
+    if saw_timeout:
+        raise RuntimeError(
+            f"Gemini request timed out after {hard_timeout}s across attempted models: {tried}."
+        )
     raise RuntimeError(
         "Gemini generation could not be completed. "
         f"Attempted models: {tried}. The key is likely quota-limited for generation right now."

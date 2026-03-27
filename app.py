@@ -585,7 +585,7 @@ def main() -> None:
         st.header("AI Copilot")
         ai_provider_label = st.selectbox("AI provider", ["Ollama (local)", "Gemini (API key)"], index=0)
         ai_provider = "ollama" if ai_provider_label.startswith("Ollama") else "gemini"
-        ai_timeout_seconds = st.slider("AI timeout (seconds)", min_value=30, max_value=300, value=120, step=10)
+        ai_timeout_seconds = st.slider("AI timeout (seconds)", min_value=30, max_value=180, value=60, step=10)
 
         ollama_endpoint = "http://localhost:11434"
         gemini_api_key = ""
@@ -992,11 +992,18 @@ def main() -> None:
         if st.button("Generate executive AI brief"):
             try:
                 with st.spinner("Generating AI brief..."):
+                    if ai_provider == "gemini":
+                        fallback_provider = "gemini"
+                    elif gemini_api_key.strip():
+                        fallback_provider = "gemini"
+                    else:
+                        fallback_provider = "ollama"
+
                     orchestration_result = orchestrate_llm_task(
                         analysis=analysis,
                         task="executive_brief",
                         provider_preference=ai_provider,
-                        fallback_provider=None,
+                        fallback_provider=fallback_provider,
                         ollama_model=llm_model if ai_provider == "ollama" else "llama3:latest",
                         ollama_endpoint=ollama_endpoint,
                         gemini_model=llm_model if ai_provider == "gemini" else "gemini-2.0-flash",
