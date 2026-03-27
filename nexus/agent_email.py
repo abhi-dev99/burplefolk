@@ -646,7 +646,7 @@ def run_agent_inbox_loop(stop_event: threading.Event, loop_config: AgentLoopConf
         except Exception as exc:
             _log_event("error", "Agent loop execution failed.", {"error": str(exc)})
 
-        wait_seconds = max(5, int(loop_config.interval_seconds))
+        wait_seconds = max(10, int(loop_config.interval_seconds))
         stop_event.wait(wait_seconds)
 
     _log_event("info", "Agent auto-reply loop stopped.", {"agent_email": loop_config.agent_email})

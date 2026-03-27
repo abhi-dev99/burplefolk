@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import threading
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
@@ -16,6 +17,13 @@ from nexus.ai import (
     test_ollama_connection,
 )
 from nexus.analysis import run_analysis
+from nexus.agent_email import (
+    AgentLoopConfig,
+    firebase_email_password_login,
+    get_event_log,
+    process_agent_inbox_once,
+    run_agent_inbox_loop,
+)
 from nexus.audit import audit_commit, audit_load
 from nexus.ingestion import format_db_connection_error, test_database_connection
 from nexus.models import APP_TITLE, DBConnectionConfig
@@ -297,6 +305,26 @@ def _build_enterprise_pdf_report(
     return buffer.getvalue(), None
 
 
+def _read_secret(name: str, default: str = "") -> str:
+    try:
+        value = st.secrets.get(name, default)
+    except Exception:
+        value = default
+    if value is None:
+        return default
+    return str(value)
+
+
+def _get_firebase_runtime_config() -> Dict[str, str]:
+    return {
+        "apiKey": _read_secret("FIREBASE_API_KEY", os.getenv("FIREBASE_API_KEY", "")),
+        "authDomain": _read_secret("FIREBASE_AUTH_DOMAIN", os.getenv("FIREBASE_AUTH_DOMAIN", "")),
+        "projectId": _read_secret("FIREBASE_PROJECT_ID", os.getenv("FIREBASE_PROJECT_ID", "")),
+        "storageBucket": _read_secret("FIREBASE_STORAGE_BUCKET", os.getenv("FIREBASE_STORAGE_BUCKET", "")),
+        "defaultAgentEmail": _read_secret("AGENT_DEFAULT_EMAIL", os.getenv("AGENT_DEFAULT_EMAIL", "burplefolk@gmail.com")),
+    }
+
+
 def init_page() -> None:
     st.set_page_config(page_title=APP_TITLE, layout="wide")
     st.markdown(
@@ -413,6 +441,32 @@ def init_page() -> None:
             color: var(--text);
             font-weight: 600;
         }
+        .agent-icon-btn {
+            font-size: 1.5rem;
+            cursor: pointer;
+            text-align: center;
+        }
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-content {
+            background: var(--surface);
+            border: 1px solid var(--tab-border);
+            border-radius: 12px;
+            padding: 2rem;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -474,8 +528,294 @@ def render_metric_explanations() -> None:
         )
 
 
+def agent_dashboard() -> None:
+    """Dedicated Agent Settings and Control Page."""
+    init_page()
+    firebase_cfg = _get_firebase_runtime_config()
+    
+    st.title("Agent Dashboard")
+    st.markdown("Configure your Gmail automation agent and monitor activity.")
+    st.markdown("---")
+    
+    agent_auth_state = st.session_state.get("agent_auth_state", {})
+    
+    # Navigation + logout
+    col1, col2, col3 = st.columns([0.2, 0.6, 0.2])
+    with col1:
+        if st.button("Back to Home", use_container_width=True, key="agent_dashboard_home"):
+            st.session_state["agent_page_active"] = False
+            st.rerun()
+    with col3:
+        if st.button("Logout", use_container_width=True, key="agent_dashboard_logout"):
+            st.session_state["agent_auth_state"] = {"ok": False, "email": "", "idToken": ""}
+            st.session_state["agent_page_active"] = False
+            st.rerun()
+    
+    st.markdown("---")
+    
+    if agent_auth_state.get("ok"):
+        st.success(f"Logged in as: {agent_auth_state.get('email')}")
+        
+        # Gmail Configuration Section
+        st.subheader("Gmail Configuration")
+        st.markdown("Configure your Gmail inbox automation:")
+        
+        default_agent_email = agent_auth_state.get('email') or "burplefolk@gmail.com"
+        agent_email = st.text_input("Agent Gmail", value=default_agent_email, key="agent_email_address_dashboard")
+        gmail_app_password = st.text_input("Gmail App Password", type="password", key="agent_gmail_app_password_dashboard")
+        imap_host = st.text_input("IMAP Host", value="imap.gmail.com", key="agent_imap_host_dashboard")
+        smtp_host = st.text_input("SMTP Host", value="smtp.gmail.com", key="agent_smtp_host_dashboard")
+        smtp_port = st.number_input("SMTP Port", min_value=1, max_value=65535, value=587, key="agent_smtp_port_dashboard")
+        poll_seconds = st.slider("Inbox poll interval (seconds)", min_value=15, max_value=600, value=60, step=15, key="agent_poll_seconds_dashboard")
+        max_messages = st.slider("Max emails per cycle", min_value=1, max_value=20, value=5, step=1, key="agent_max_messages_dashboard")
+
+        enable_auto_reply = st.checkbox(
+            "Enable automatic reply-all",
+            value=bool(st.session_state.get("agent_auto_reply_enabled", False)),
+            key="agent_auto_reply_enabled_dashboard",
+        )
+
+        # Sync values back to main session state
+        st.session_state["agent_email_address"] = agent_email
+        st.session_state["agent_gmail_app_password"] = gmail_app_password
+        st.session_state["agent_imap_host"] = imap_host
+        st.session_state["agent_smtp_host"] = smtp_host
+        st.session_state["agent_smtp_port"] = smtp_port
+        st.session_state["agent_poll_seconds"] = poll_seconds
+        st.session_state["agent_max_messages"] = max_messages
+        st.session_state["agent_auto_reply_enabled"] = enable_auto_reply
+
+        st.markdown("---")
+        
+        # AI Configuration Section
+        st.subheader("AI Query Engine")
+        st.markdown("Configure AI provider for automatic query generation from emails:")
+        
+        ai_provider_label = st.selectbox(
+            "AI Provider",
+            ["Ollama (local)", "Gemini (API key)"],
+            index=0 if st.session_state.get("agent_ai_provider") != "gemini" else 1,
+            key="agent_ai_provider_select"
+        )
+        ai_provider = "gemini" if "Gemini" in ai_provider_label else "ollama"
+        
+        if ai_provider == "ollama":
+            ollama_endpoint = st.text_input(
+                "Ollama Endpoint",
+                value=st.session_state.get("agent_ollama_endpoint", "http://localhost:11434"),
+                key="agent_ollama_endpoint_input"
+            )
+            available_models = []
+            try:
+                from nexus.ai import ollama_get_models
+                available_models = ollama_get_models(ollama_endpoint)
+            except Exception:
+                available_models = []
+            
+            if available_models:
+                ollama_model = st.selectbox(
+                    "Model",
+                    available_models,
+                    index=0,
+                    key="agent_ollama_model_select"
+                )
+                st.success(f"Ollama detected: {len(available_models)} model(s) available")
+            else:
+                ollama_model = st.text_input("Model (custom)", value="llama2", key="agent_ollama_model_custom")
+                st.warning("No Ollama models auto-detected. Enter model name manually.")
+            
+            st.session_state["agent_ai_provider"] = "ollama"
+            st.session_state["agent_ollama_endpoint"] = ollama_endpoint
+            st.session_state["agent_ollama_model"] = ollama_model
+            st.session_state["agent_gemini_api_key"] = ""
+            st.session_state["agent_gemini_model"] = ""
+        else:
+            gemini_api_key = st.text_input(
+                "Gemini API Key",
+                type="password",
+                value=st.session_state.get("agent_gemini_api_key", ""),
+                key="agent_gemini_api_key_input"
+            )
+            gemini_model = st.text_input(
+                "Model",
+                value=st.session_state.get("agent_gemini_model", "gemini-2.0-flash"),
+                key="agent_gemini_model_input"
+            )
+            
+            st.session_state["agent_ai_provider"] = "gemini"
+            st.session_state["agent_gemini_api_key"] = gemini_api_key
+            st.session_state["agent_gemini_model"] = gemini_model
+            st.session_state["agent_ollama_endpoint"] = ""
+            st.session_state["agent_ollama_model"] = ""
+        
+        st.markdown("---")
+        
+        # Manual Inbox Processing
+        st.subheader("Manual Inbox Processing")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Process inbox once now", use_container_width=True, key="agent_process_once_dashboard"):
+                tables_snapshot = st.session_state.get("agent_tables_snapshot")
+                if not isinstance(tables_snapshot, dict) or not tables_snapshot:
+                    st.error("No analyzed tables available yet. Upload and analyze a dataset on the main page first.")
+                elif not agent_email or not gmail_app_password:
+                    st.error("Enter Agent Gmail and Gmail App Password before processing inbox.")
+                else:
+                    with st.spinner("Checking agent inbox and preparing reply-all messages..."):
+                        summary = process_agent_inbox_once(
+                            agent_email=agent_email,
+                            gmail_app_password=gmail_app_password,
+                            imap_host=imap_host,
+                            smtp_host=smtp_host,
+                            smtp_port=int(smtp_port),
+                            tables=tables_snapshot,
+                            max_messages_per_cycle=int(max_messages),
+                            ai_provider=st.session_state.get("agent_ai_provider", "ollama"),
+                            ollama_endpoint=st.session_state.get("agent_ollama_endpoint", "http://localhost:11434"),
+                            ollama_model=st.session_state.get("agent_ollama_model", "llama2"),
+                            gemini_api_key=st.session_state.get("agent_gemini_api_key", ""),
+                            gemini_model=st.session_state.get("agent_gemini_model", "gemini-2.0-flash"),
+                        )
+
+                    if summary.get("replied", 0) > 0:
+                        st.success(f"Agent sent {summary.get('replied', 0)} reply-all email(s).")
+                    else:
+                        st.info(
+                            f"No replies sent. Unseen: {summary.get('unseen_count', 0)}, "
+                            f"Processed: {summary.get('processed', 0)}, Skipped: {summary.get('skipped', 0)}"
+                        )
+                        if summary.get("unseen_count", 0) == 0:
+                            st.caption("Tip: only unread emails are processed. Mark the email unread and try again.")
+
+                    if summary.get("failures"):
+                        st.error("Inbox processing errors: " + " | ".join(summary.get("failures", [])))
+        
+        with col2:
+            current_loop_thread = st.session_state.get("agent_loop_thread")
+            if current_loop_thread is not None and current_loop_thread.is_alive():
+                st.info("Background agent is running")
+            else:
+                st.info("Background agent is idle")
+
+        st.caption("Every reply includes: Disclaimer: This content is AI-generated.")
+        
+        st.markdown("---")
+        
+        # Activity Log
+        st.subheader("Activity Log")
+        recent_events = get_event_log(limit=50)
+        if recent_events:
+            events_df = pd.DataFrame(recent_events)
+            st.dataframe(events_df, use_container_width=True, hide_index=True, height=400)
+        else:
+            st.info("No activity logged yet.")
+    else:
+        st.error("Not authenticated. Please log in from the main sidebar.")
+
+
+def _sync_agent_loop_from_snapshot() -> None:
+    authed = bool(st.session_state.get("agent_auth_state", {}).get("ok"))
+    enable_auto_reply = bool(st.session_state.get("agent_auto_reply_enabled", False))
+    agent_email = str(st.session_state.get("agent_email_address", "")).strip()
+    gmail_app_password = str(st.session_state.get("agent_gmail_app_password", "")).strip()
+    imap_host = str(st.session_state.get("agent_imap_host", "imap.gmail.com")).strip()
+    smtp_host = str(st.session_state.get("agent_smtp_host", "smtp.gmail.com")).strip()
+    smtp_port = int(st.session_state.get("agent_smtp_port", 587))
+    poll_seconds = int(st.session_state.get("agent_poll_seconds", 60))
+    max_messages = int(st.session_state.get("agent_max_messages", 5))
+    tables_snapshot = st.session_state.get("agent_tables_snapshot", {})
+
+    has_tables = isinstance(tables_snapshot, dict) and bool(tables_snapshot)
+    run_agent_loop = bool(authed and enable_auto_reply and agent_email and gmail_app_password and has_tables)
+
+    snapshot_signature = ",".join(sorted(tables_snapshot.keys())) if has_tables else ""
+    new_fingerprint = "|".join(
+        [
+            snapshot_signature,
+            agent_email,
+            imap_host,
+            smtp_host,
+            str(smtp_port),
+            str(poll_seconds),
+            str(max_messages),
+            st.session_state.get("agent_ai_provider", "ollama"),
+            st.session_state.get("agent_ollama_model", "llama2"),
+            st.session_state.get("agent_gemini_model", "gemini-2.0-flash"),
+            "enabled" if run_agent_loop else "disabled",
+        ]
+    )
+
+    existing_thread = st.session_state.get("agent_loop_thread")
+    existing_stop_event = st.session_state.get("agent_loop_stop_event")
+    existing_fingerprint = st.session_state.get("agent_loop_fingerprint", "")
+
+    if run_agent_loop:
+        if existing_thread is None or not existing_thread.is_alive() or existing_fingerprint != new_fingerprint:
+            if existing_stop_event is not None:
+                existing_stop_event.set()
+
+            stop_event = threading.Event()
+            loop_config = AgentLoopConfig(
+                agent_email=agent_email,
+                gmail_app_password=gmail_app_password,
+                imap_host=imap_host,
+                smtp_host=smtp_host,
+                smtp_port=smtp_port,
+                interval_seconds=poll_seconds,
+                max_messages_per_cycle=max_messages,
+                ai_provider=st.session_state.get("agent_ai_provider", "ollama"),
+                ollama_endpoint=st.session_state.get("agent_ollama_endpoint", "http://localhost:11434"),
+                ollama_model=st.session_state.get("agent_ollama_model", "llama2"),
+                gemini_api_key=st.session_state.get("agent_gemini_api_key", ""),
+                gemini_model=st.session_state.get("agent_gemini_model", "gemini-2.0-flash"),
+            )
+            loop_thread = threading.Thread(
+                target=run_agent_inbox_loop,
+                args=(stop_event, loop_config, tables_snapshot),
+                daemon=True,
+                name="agent-inbox-loop",
+            )
+            loop_thread.start()
+            st.session_state["agent_loop_thread"] = loop_thread
+            st.session_state["agent_loop_stop_event"] = stop_event
+            st.session_state["agent_loop_fingerprint"] = new_fingerprint
+    else:
+        if existing_stop_event is not None:
+            existing_stop_event.set()
+        st.session_state["agent_loop_thread"] = None
+        st.session_state["agent_loop_stop_event"] = None
+        st.session_state["agent_loop_fingerprint"] = ""
+
+
 def main() -> None:
     init_page()
+    firebase_cfg = _get_firebase_runtime_config()
+
+    if "agent_auth_state" not in st.session_state:
+        st.session_state["agent_auth_state"] = {"ok": False, "email": "", "idToken": ""}
+    if "agent_loop_thread" not in st.session_state:
+        st.session_state["agent_loop_thread"] = None
+    if "agent_loop_stop_event" not in st.session_state:
+        st.session_state["agent_loop_stop_event"] = None
+    if "agent_loop_fingerprint" not in st.session_state:
+        st.session_state["agent_loop_fingerprint"] = ""
+    if "agent_manual_run_requested" not in st.session_state:
+        st.session_state["agent_manual_run_requested"] = False
+    if "agent_page_active" not in st.session_state:
+        st.session_state["agent_page_active"] = False
+    if "show_agent_login_modal" not in st.session_state:
+        st.session_state["show_agent_login_modal"] = False
+    if "agent_tables_snapshot" not in st.session_state:
+        st.session_state["agent_tables_snapshot"] = {}
+    if "analysis_result" not in st.session_state:
+        st.session_state["analysis_result"] = None
+
+    _sync_agent_loop_from_snapshot()
+
+    # Check if agent dashboard should be shown
+    if st.session_state.get("agent_page_active", False):
+        agent_dashboard()
+        return
 
     cadence_days_map = {
         "second": 1.0 / 86400.0,
@@ -669,6 +1009,64 @@ def main() -> None:
         st.markdown("---")
         actor = st.text_input("Audit actor", value="HackathonTeam")
 
+        st.markdown("---")
+        st.header("Agent")
+        agent_auth_state = st.session_state.get("agent_auth_state", {})
+        
+        if agent_auth_state.get("ok"):
+            st.success(f"Logged in as: {agent_auth_state.get('email')}")
+            if st.button("Agent Settings", use_container_width=True, key="agent_settings_btn"):
+                st.session_state["agent_page_active"] = True
+                st.rerun()
+        else:
+            if st.button("Agent Login", use_container_width=True, key="agent_login_btn_sidebar"):
+                st.session_state["show_agent_login_modal"] = True
+            
+            if st.session_state.get("show_agent_login_modal", False):
+                st.markdown("---")
+                st.markdown("#### Firebase Login")
+                firebase_login_email = st.text_input(
+                    "Email",
+                    value=agent_auth_state.get("email") or firebase_cfg.get("defaultAgentEmail", "burplefolk@gmail.com"),
+                    key="firebase_login_email_sidebar",
+                )
+                firebase_login_password = st.text_input("Password", type="password", key="firebase_login_password_sidebar")
+
+                login_col1, login_col2 = st.columns(2)
+                with login_col1:
+                    if st.button("Sign In", use_container_width=True, key="firebase_signin_submit_sidebar"):
+                        if not all([firebase_cfg.get("apiKey"), firebase_cfg.get("authDomain"), firebase_cfg.get("projectId"), firebase_cfg.get("storageBucket")]):
+                            st.error("Firebase runtime config is missing.")
+                        else:
+                            ok, msg, user = firebase_email_password_login(
+                                firebase_api_key=firebase_cfg["apiKey"],
+                                firebase_auth_domain=firebase_cfg["authDomain"],
+                                firebase_project_id=firebase_cfg["projectId"],
+                                firebase_storage_bucket=firebase_cfg["storageBucket"],
+                                email=firebase_login_email,
+                                password=firebase_login_password,
+                            )
+                            if ok:
+                                st.session_state["agent_auth_state"] = {
+                                    "ok": True,
+                                    "email": firebase_login_email,
+                                    "idToken": str((user or {}).get("idToken", "")),
+                                }
+                                st.session_state["show_agent_login_modal"] = False
+                                st.success(msg)
+                                st.rerun()
+                            else:
+                                st.error(msg)
+                with login_col2:
+                    if st.button("Cancel", use_container_width=True, key="firebase_signin_cancel_sidebar"):
+                        st.session_state["show_agent_login_modal"] = False
+                        st.rerun()
+                st.markdown("---")
+
+    current_loop_thread = st.session_state.get("agent_loop_thread")
+    if current_loop_thread is not None and current_loop_thread.is_alive():
+        st.caption("Agent inbox loop is active in the background.")
+
     file_map: Dict[str, bytes] = {}
     if source_type == "SQLite" and uploaded_sqlite is not None:
         file_map[uploaded_sqlite.name] = uploaded_sqlite.getvalue()
@@ -683,7 +1081,8 @@ def main() -> None:
         st.info("Connect to the database from the sidebar first. Analysis starts only after a successful connection test.")
         return
 
-    if not file_map:
+    cached_analysis = st.session_state.get("analysis_result")
+    if not file_map and not cached_analysis:
         st.title(APP_TITLE)
         st.markdown(
             """
@@ -703,38 +1102,78 @@ def main() -> None:
         )
         return
 
-    progress = st.progress(0, text="Waiting to start")
+    analysis = cached_analysis
+    if file_map:
+        progress = st.progress(0, text="Waiting to start")
 
-    def progress_callback(progress_value: int, message: str) -> None:
-        progress.progress(progress_value, text=message)
+        def progress_callback(progress_value: int, message: str) -> None:
+            progress.progress(progress_value, text=message)
 
-    try:
-        with st.spinner("Running schema intelligence pipeline..."):
-            analysis = run_analysis(
-                source_type,
-                file_map,
-                profile_row_limit,
-                db_config=db_config,
-                progress_callback=progress_callback,
-                erd_view_mode=erd_view_mode,
-                erd_layout_direction=erd_layout_direction,
-                ollama_model=llm_model if ai_provider == "ollama" else "",
-                ollama_endpoint=ollama_endpoint,
-                enable_ai_erd_fallback=enable_ai_erd_fallback,
-                temporal_cadence_days=temporal_cadence_days,
-            )
-    except Exception as exc:
+        try:
+            with st.spinner("Running schema intelligence pipeline..."):
+                analysis = run_analysis(
+                    source_type,
+                    file_map,
+                    profile_row_limit,
+                    db_config=db_config,
+                    progress_callback=progress_callback,
+                    erd_view_mode=erd_view_mode,
+                    erd_layout_direction=erd_layout_direction,
+                    ollama_model=llm_model if ai_provider == "ollama" else "",
+                    ollama_endpoint=ollama_endpoint,
+                    enable_ai_erd_fallback=enable_ai_erd_fallback,
+                    temporal_cadence_days=temporal_cadence_days,
+                )
+        except Exception as exc:
+            progress.empty()
+            if source_type == "DB Connection":
+                st.error(format_db_connection_error(exc, db_config))
+            else:
+                st.error(f"Analysis failed: {exc}")
+            return
         progress.empty()
-        if source_type == "DB Connection":
-            st.error(format_db_connection_error(exc, db_config))
-        else:
-            st.error(f"Analysis failed: {exc}")
-        return
-    progress.empty()
 
     if not analysis:
         st.error("Unable to analyze source. Validate file format and try again.")
         return
+
+    st.session_state["analysis_result"] = analysis
+
+    st.session_state["agent_tables_snapshot"] = analysis.get("tables", {})
+
+    authed = bool(st.session_state.get("agent_auth_state", {}).get("ok"))
+    agent_email = str(st.session_state.get("agent_email_address", "")).strip()
+    gmail_app_password = str(st.session_state.get("agent_gmail_app_password", "")).strip()
+    imap_host = str(st.session_state.get("agent_imap_host", "imap.gmail.com")).strip()
+    smtp_host = str(st.session_state.get("agent_smtp_host", "smtp.gmail.com")).strip()
+    smtp_port = int(st.session_state.get("agent_smtp_port", 587))
+    max_messages = int(st.session_state.get("agent_max_messages", 5))
+
+    _sync_agent_loop_from_snapshot()
+
+    if st.session_state.get("agent_manual_run_requested") and authed and agent_email and gmail_app_password:
+        with st.spinner("Checking agent inbox and preparing reply-all messages..."):
+            summary = process_agent_inbox_once(
+                agent_email=agent_email,
+                gmail_app_password=gmail_app_password,
+                imap_host=imap_host,
+                smtp_host=smtp_host,
+                smtp_port=smtp_port,
+                tables=analysis["tables"],
+                max_messages_per_cycle=max_messages,
+                ai_provider=st.session_state.get("agent_ai_provider", "ollama"),
+                ollama_endpoint=st.session_state.get("agent_ollama_endpoint", "http://localhost:11434"),
+                ollama_model=st.session_state.get("agent_ollama_model", "llama2"),
+                gemini_api_key=st.session_state.get("agent_gemini_api_key", ""),
+                gemini_model=st.session_state.get("agent_gemini_model", "gemini-2.0-flash"),
+            )
+        if summary.get("replied", 0) > 0:
+            st.success(f"Agent sent {summary.get('replied', 0)} reply-all email(s).")
+        else:
+            st.info("Inbox processed. No outgoing replies were sent.")
+        if summary.get("failures"):
+            st.error("Inbox processing errors: " + " | ".join(summary.get("failures", [])))
+        st.session_state["agent_manual_run_requested"] = False
 
     dict_state_key = f"dict::{analysis['generated_at']}"
     if st.session_state.get("dictionary_state_key") != dict_state_key:
