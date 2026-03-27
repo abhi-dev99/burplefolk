@@ -114,6 +114,7 @@ def orchestrate_llm_task(
     fallback_provider: Optional[str] = None,
     ollama_model: str = "llama3:latest",
     ollama_endpoint: str = "http://localhost:11434",
+    ollama_api_key: str = "",
     gemini_model: str = "gemini-2.0-flash",
     gemini_api_key: str = "",
     timeout_seconds: int = 120,
@@ -174,6 +175,7 @@ def orchestrate_llm_task(
                 endpoint=ollama_endpoint,
                 provider=provider,
                 api_key=gemini_api_key,
+                ollama_api_key=ollama_api_key,
                 timeout_seconds=timeout_seconds,
             ).strip()
 

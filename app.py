@@ -1,4 +1,5 @@
 import json
+import os
 import re
 from datetime import datetime, timezone
 from io import BytesIO
@@ -587,13 +588,33 @@ def main() -> None:
         ai_provider = "ollama" if ai_provider_label.startswith("Ollama") else "gemini"
         ai_timeout_seconds = st.slider("AI timeout (seconds)", min_value=30, max_value=180, value=60, step=10)
 
-        ollama_endpoint = "http://localhost:11434"
+        default_ollama_endpoint = st.secrets.get("OLLAMA_ENDPOINT", os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434"))
+        default_ollama_api_key = st.secrets.get("OLLAMA_API_KEY", os.getenv("OLLAMA_API_KEY", ""))
+
+        ollama_endpoint = str(default_ollama_endpoint)
+        ollama_api_key = str(default_ollama_api_key)
         gemini_api_key = ""
         available_models: List[str] = []
 
         if ai_provider == "ollama":
-            ollama_endpoint = st.text_input("Ollama endpoint", value="http://localhost:11434")
-            available_models = ollama_get_models(ollama_endpoint)
+            ollama_endpoint = st.text_input("Ollama endpoint", value=ollama_endpoint)
+            ollama_api_key = st.text_input("Ollama API key (optional)", value=ollama_api_key, type="password")
+
+            if "localhost" in ollama_endpoint or "127.0.0.1" in ollama_endpoint:
+                st.warning(
+                    "localhost only works when running this app on your own machine. "
+                    "For Streamlit Cloud, set a public Ollama endpoint in secrets: OLLAMA_ENDPOINT (and OLLAMA_API_KEY if needed)."
+                )
+
+            if ":1143" in ollama_endpoint and ":11434" not in ollama_endpoint:
+                st.error("Ollama endpoint port looks incorrect. Use port 11434 (for example: http://<ip>:11434).")
+
+            model_list_timeout = max(8, min(ai_timeout_seconds, 30))
+            available_models = ollama_get_models(
+                ollama_endpoint,
+                api_key=ollama_api_key,
+                timeout_seconds=model_list_timeout,
+            )
             custom_model = st.text_input("Custom model (optional)", value="")
             if available_models:
                 llm_model = st.selectbox("Installed models", available_models, index=0)
@@ -606,7 +627,12 @@ def main() -> None:
                 llm_model = custom_model.strip()
 
             if st.button("Test Ollama connection", use_container_width=True, key="test_ai_connection_ollama"):
-                ok, msg, _ = test_ollama_connection(ollama_endpoint, timeout_seconds=8)
+                test_timeout = max(15, min(ai_timeout_seconds, 45))
+                ok, msg, _ = test_ollama_connection(
+                    ollama_endpoint,
+                    timeout_seconds=test_timeout,
+                    api_key=ollama_api_key,
+                )
                 st.session_state["ai_connection_state"] = {"ok": ok, "message": msg, "provider": "ollama"}
 
             ai_state = st.session_state.get("ai_connection_state")
@@ -1006,6 +1032,7 @@ def main() -> None:
                         fallback_provider=fallback_provider,
                         ollama_model=llm_model if ai_provider == "ollama" else "llama3:latest",
                         ollama_endpoint=ollama_endpoint,
+                        ollama_api_key=ollama_api_key,
                         gemini_model=llm_model if ai_provider == "gemini" else "gemini-2.0-flash",
                         gemini_api_key=gemini_api_key,
                         timeout_seconds=ai_timeout_seconds,

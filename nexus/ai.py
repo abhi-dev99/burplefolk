@@ -6,6 +6,13 @@ from typing import Dict, List, Tuple
 import requests
 
 
+def _ollama_headers(api_key: str = "") -> Dict[str, str]:
+    token = (api_key or "").strip()
+    if not token:
+        return {}
+    return {"Authorization": f"Bearer {token}"}
+
+
 def _normalize_gemini_model(model: str) -> str:
     normalized = (model or "").strip()
     return normalized or "gemini-2.0-flash"
@@ -67,9 +74,13 @@ def _candidate_gemini_models(selected_model: str, api_key: str, timeout_seconds:
     return ordered or [selected_model]
 
 
-def ollama_get_models(endpoint: str) -> List[str]:
+def ollama_get_models(endpoint: str, api_key: str = "", timeout_seconds: int = 8) -> List[str]:
     try:
-        res = requests.get(endpoint.rstrip("/") + "/api/tags", timeout=3)
+        res = requests.get(
+            endpoint.rstrip("/") + "/api/tags",
+            timeout=timeout_seconds,
+            headers=_ollama_headers(api_key),
+        )
         if res.status_code != 200:
             return []
         payload = res.json()
@@ -176,10 +187,10 @@ Style expectations:
 """
 
 
-def test_ollama_connection(endpoint: str, timeout_seconds: int = 8) -> Tuple[bool, str, List[str]]:
+def test_ollama_connection(endpoint: str, timeout_seconds: int = 8, api_key: str = "") -> Tuple[bool, str, List[str]]:
     url = endpoint.rstrip("/") + "/api/tags"
     try:
-        response = requests.get(url, timeout=timeout_seconds)
+        response = requests.get(url, timeout=timeout_seconds, headers=_ollama_headers(api_key))
         response.raise_for_status()
         payload = response.json() if response.content else {}
         models = [m.get("name", "") for m in payload.get("models", []) if m.get("name")]
@@ -225,7 +236,13 @@ def test_gemini_connection(api_key: str, model: str = "gemini-2.0-flash", timeou
         return False, f"Gemini connection failed: {exc}"
 
 
-def _generate_ollama_brief(analysis: Dict, model: str, endpoint: str, timeout_seconds: int = 120) -> str:
+def _generate_ollama_brief(
+    analysis: Dict,
+    model: str,
+    endpoint: str,
+    timeout_seconds: int = 120,
+    api_key: str = "",
+) -> str:
     prompt = _build_ai_brief_prompt(analysis)
 
     url = endpoint.rstrip("/") + "/api/generate"
@@ -236,14 +253,14 @@ def _generate_ollama_brief(analysis: Dict, model: str, endpoint: str, timeout_se
         "options": {"temperature": 0.2},
     }
     try:
-        response = requests.post(url, json=payload, timeout=timeout_seconds)
+        response = requests.post(url, json=payload, timeout=timeout_seconds, headers=_ollama_headers(api_key))
     except requests.Timeout as exc:
         raise RuntimeError(
             f"Ollama request timed out after {timeout_seconds}s. Increase timeout or use a lighter model."
         ) from exc
 
     if response.status_code == 404:
-        installed = ollama_get_models(endpoint)
+        installed = ollama_get_models(endpoint, api_key=api_key)
         installed_txt = ", ".join(installed) if installed else "none detected"
         raise RuntimeError(
             f"Model '{model}' not found in Ollama. Installed models: {installed_txt}. "
@@ -357,12 +374,19 @@ def generate_ai_brief(
     endpoint: str,
     provider: str = "ollama",
     api_key: str = "",
+    ollama_api_key: str = "",
     timeout_seconds: int = 120,
 ) -> str:
     selected_provider = (provider or "ollama").strip().lower()
     if selected_provider == "gemini":
         return _generate_gemini_brief(analysis, model=model, api_key=api_key, timeout_seconds=timeout_seconds)
-    return _generate_ollama_brief(analysis, model=model, endpoint=endpoint, timeout_seconds=timeout_seconds)
+    return _generate_ollama_brief(
+        analysis,
+        model=model,
+        endpoint=endpoint,
+        timeout_seconds=timeout_seconds,
+        api_key=ollama_api_key,
+    )
 
 
 def _extract_json_object(text: str) -> Dict:
