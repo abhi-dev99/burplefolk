@@ -1,0 +1,188 @@
+{
+  "version": "1.0.0",
+  "entities": [
+    {
+      "name": "customer",
+      "aliases": [
+        "customer",
+        "customers",
+        "client",
+        "buyer"
+      ]
+    },
+    {
+      "name": "order",
+      "aliases": [
+        "order",
+        "orders",
+        "purchase",
+        "transaction"
+      ]
+    },
+    {
+      "name": "product",
+      "aliases": [
+        "product",
+        "products",
+        "item",
+        "sku"
+      ]
+    },
+    {
+      "name": "payment",
+      "aliases": [
+        "payment",
+        "payments",
+        "invoice",
+        "billing"
+      ]
+    },
+    {
+      "name": "seller",
+      "aliases": [
+        "seller",
+        "merchant",
+        "vendor",
+        "supplier"
+      ]
+    }
+  ],
+  "role_synonyms": {
+    "business_key": [
+      "id",
+      "_id",
+      "code",
+      "key",
+      "uuid"
+    ],
+    "foreign_key": [
+      "*_id",
+      "*_code",
+      "*_key",
+      "ref",
+      "reference"
+    ],
+    "measure": [
+      "amount",
+      "price",
+      "cost",
+      "revenue",
+      "total",
+      "value",
+      "qty",
+      "quantity"
+    ],
+    "event_time": [
+      "date",
+      "time",
+      "timestamp",
+      "created",
+      "updated",
+      "occurred"
+    ],
+    "status": [
+      "status",
+      "state",
+      "type",
+      "stage"
+    ],
+    "pii": [
+      "email",
+      "phone",
+      "mobile",
+      "ssn",
+      "aadhaar",
+      "pan",
+      "passport"
+    ],
+    "descriptor": [
+      "name",
+      "title",
+      "description",
+      "desc",
+      "comment",
+      "review",
+      "text"
+    ]
+  },
+  "column_overrides": {
+    "order_items.quantity": {
+      "role": "measure",
+      "entity": "order",
+      "canonical_name": "quantity",
+      "business_term": "Quantity",
+      "confidence": 0.95,
+      "source": "auto-suggestion",
+      "applied_at": "2026-03-27T15:48:04.619739+00:00"
+    },
+    "stocks.quantity": {
+      "role": "measure",
+      "entity": "unknown",
+      "canonical_name": "quantity",
+      "business_term": "Quantity",
+      "confidence": 0.95,
+      "source": "auto-suggestion",
+      "applied_at": "2026-03-27T15:48:04.619752+00:00"
+    }
+  },
+  "metrics": [
+    {
+      "name": "row_count",
+      "kind": "count_rows"
+    },
+    {
+      "name": "total_revenue",
+      "kind": "sum",
+      "column_hints": [
+        "amount",
+        "total",
+        "revenue",
+        "price"
+      ]
+    },
+    {
+      "name": "null_ratio",
+      "kind": "ratio",
+      "numerator": "null_cells",
+      "denominator": "total_cells"
+    }
+  ],
+  "constraints": [
+    {
+      "name": "business_keys_should_not_be_null",
+      "type": "role_null_threshold",
+      "role": "business_key",
+      "max_null_percent": 5.0
+    },
+    {
+      "name": "event_time_should_exist",
+      "type": "role_presence",
+      "role": "event_time",
+      "min_columns": 1
+    },
+    {
+      "name": "email_columns_should_match_email_pattern",
+      "type": "column_regex",
+      "table_pattern": "*",
+      "column_pattern": "*email*",
+      "regex": "^[\\w\\.-]+@[\\w\\.-]+\\.[A-Za-z]{2,}$",
+      "max_mismatch_percent": 20.0
+    },
+    {
+      "name": "status_columns_should_use_known_states",
+      "type": "allowed_values",
+      "table_pattern": "*",
+      "column_pattern": "*status*",
+      "values": [
+        "pending",
+        "placed",
+        "shipped",
+        "delivered",
+        "cancelled",
+        "active",
+        "inactive"
+      ],
+      "max_invalid_percent": 40.0
+    }
+  ]
+}

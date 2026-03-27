@@ -118,6 +118,7 @@ def orchestrate_llm_task(
     gemini_model: str = "gemini-2.0-flash",
     gemini_api_key: str = "",
     timeout_seconds: int = 120,
+    additional_instructions: str = "",
 ) -> Dict[str, Any]:
     started_at = _utc_now_iso()
     start_perf = time.perf_counter()
@@ -177,6 +178,7 @@ def orchestrate_llm_task(
                 api_key=gemini_api_key,
                 ollama_api_key=ollama_api_key,
                 timeout_seconds=timeout_seconds,
+                additional_instructions=additional_instructions,
             ).strip()
 
             if not output:

@@ -1,9 +1,11 @@
 import json
 import re
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+
+from .semantic import resolve_semantic_role, semantic_relationship_adjustment
 
 
 def sanitize_name(name: str) -> str:
@@ -12,7 +14,16 @@ def sanitize_name(name: str) -> str:
     return cleaned.lower() or "table"
 
 
-def semantic_label(column_name: str) -> str:
+def semantic_label(column_name: str, table_name: str = "", semantic_model: Optional[Dict[str, Any]] = None) -> str:
+    if semantic_model and table_name:
+        try:
+            resolved = resolve_semantic_role(table_name, column_name, "", semantic_model)
+            role = str(resolved.get("role", "")).strip().lower()
+            if role:
+                return role
+        except Exception:
+            pass
+
     col = column_name.lower()
     if col.endswith("_id") or col == "id":
         return "identifier"
@@ -212,7 +223,11 @@ def build_table_alias_maps(table_names: List[str]) -> Tuple[Dict[str, set], Dict
     return alias_to_tables, table_to_aliases
 
 
-def infer_foreign_keys(tables: Dict[str, pd.DataFrame], pk_map: Dict[str, List[str]]) -> List[Dict]:
+def infer_foreign_keys(
+    tables: Dict[str, pd.DataFrame],
+    pk_map: Dict[str, List[str]],
+    semantic_model: Optional[Dict[str, Any]] = None,
+) -> List[Dict]:
     relationships: List[Dict] = []
     alias_to_tables, table_to_aliases = build_table_alias_maps(list(tables.keys()))
 
@@ -304,9 +319,24 @@ def infer_foreign_keys(tables: Dict[str, pd.DataFrame], pk_map: Dict[str, List[s
                         continue
 
                     score = (0.70 * name_score) + (0.30 * overlap_ratio)
+                    semantic_adjustment = 0.0
+                    if semantic_model:
+                        try:
+                            semantic_adjustment = semantic_relationship_adjustment(
+                                child_table=child_table,
+                                child_column=child_col,
+                                parent_table=parent_table,
+                                parent_column=parent_col,
+                                config=semantic_model,
+                                child_dtype=str(child_df[child_col].dtype),
+                                parent_dtype=str(tables[parent_table][parent_col].dtype),
+                            )
+                        except Exception:
+                            semantic_adjustment = 0.0
+                    score += semantic_adjustment
                     if score > best_score:
                         best_score = score
-                        best = (parent_table, parent_col)
+                        best = (parent_table, parent_col, semantic_adjustment)
 
             if best:
                 relationships.append(
@@ -317,6 +347,8 @@ def infer_foreign_keys(tables: Dict[str, pd.DataFrame], pk_map: Dict[str, List[s
                         "parent_column": best[1],
                         "relation_type": "many-to-one",
                         "confidence": round(min(1.0, best_score), 3),
+                        "semantic_adjustment": round(float(best[2]), 3) if len(best) > 2 else 0.0,
+                        "semantic_signal": bool(semantic_model),
                     }
                 )
     return relationships

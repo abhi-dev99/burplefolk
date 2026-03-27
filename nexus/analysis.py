@@ -9,6 +9,14 @@ from .ingestion import csv_ingest, database_ingest, sqlite_ingest
 from .models import DBConnectionConfig
 from .profiling import build_dictionary, compute_business_context, profile_table
 from .schema import infer_foreign_keys, infer_primary_keys
+from .semantic import (
+    compute_semantic_metrics,
+    evaluate_semantic_constraints,
+    infer_table_entity,
+    load_semantic_config,
+    suggest_semantic_mappings,
+    validate_semantic_config,
+)
 from .visualization import build_erd_html, format_mermaid
 
 
@@ -50,11 +58,65 @@ def run_analysis(
     if not tables:
         return {}
 
+    semantic_model = load_semantic_config()
+    semantic_config_errors = validate_semantic_config(semantic_model)
+
     emit(20, "Inferring key candidates")
     pk_map = {table: infer_primary_keys(df) for table, df in tables.items()}
 
     emit(35, "Inferring relationships")
-    inferred_relationships = infer_foreign_keys(tables, pk_map)
+    inferred_relationships_baseline = infer_foreign_keys(tables, pk_map, semantic_model=None)
+    inferred_relationships = infer_foreign_keys(tables, pk_map, semantic_model=semantic_model)
+
+    baseline_by_key = {
+        (r.get("child_table"), r.get("child_column"), r.get("parent_table"), r.get("parent_column")): r
+        for r in inferred_relationships_baseline
+    }
+    semantic_by_key = {
+        (r.get("child_table"), r.get("child_column"), r.get("parent_table"), r.get("parent_column")): r
+        for r in inferred_relationships
+    }
+    changed_edges: List[Dict] = []
+    for key, after in semantic_by_key.items():
+        before = baseline_by_key.get(key)
+        if not before:
+            continue
+        before_conf = float(before.get("confidence", 0.0) or 0.0)
+        after_conf = float(after.get("confidence", 0.0) or 0.0)
+        if abs(after_conf - before_conf) > 1e-9:
+            changed_edges.append(
+                {
+                    "child_table": key[0],
+                    "child_column": key[1],
+                    "parent_table": key[2],
+                    "parent_column": key[3],
+                    "before_confidence": round(before_conf, 3),
+                    "after_confidence": round(after_conf, 3),
+                    "delta": round(after_conf - before_conf, 3),
+                    "semantic_adjustment": round(float(after.get("semantic_adjustment", 0.0) or 0.0), 3),
+                }
+            )
+    baseline_avg_conf = round(
+        float(np.mean([float(r.get("confidence", 0.0) or 0.0) for r in inferred_relationships_baseline]))
+        if inferred_relationships_baseline
+        else 0.0,
+        4,
+    )
+    semantic_avg_conf = round(
+        float(np.mean([float(r.get("confidence", 0.0) or 0.0) for r in inferred_relationships]))
+        if inferred_relationships
+        else 0.0,
+        4,
+    )
+    uplift_report = {
+        "baseline_relationship_count": len(inferred_relationships_baseline),
+        "semantic_relationship_count": len(inferred_relationships),
+        "baseline_avg_confidence": baseline_avg_conf,
+        "semantic_avg_confidence": semantic_avg_conf,
+        "delta_avg_confidence": round(semantic_avg_conf - baseline_avg_conf, 4),
+        "changed_edges": changed_edges,
+        "changed_edge_count": len(changed_edges),
+    }
 
     rel_keys = set()
     merged_relationships: List[Dict] = []
@@ -77,12 +139,51 @@ def run_analysis(
             total_rows,
             pk_map.get(table_name, []),
             expected_cadence_days=temporal_cadence_days,
+            semantic_model=semantic_model,
         )
         table_profiles.append(profile)
 
     emit(75, "Building data dictionary")
     avg_quality = round(float(np.mean([t["quality_score"] for t in table_profiles])) if table_profiles else 0.0, 2)
     dictionary_df = build_dictionary(table_profiles)
+
+    semantic_constraints = evaluate_semantic_constraints(table_profiles, semantic_model, tables=tables)
+    semantic_metrics = compute_semantic_metrics(tables, semantic_model)
+    semantic_suggestions = suggest_semantic_mappings(tables, semantic_model)
+    semantic_entities = [infer_table_entity(table_name, semantic_model) for table_name in tables.keys()]
+    semantic_ambiguities: List[Dict] = []
+    for profile in table_profiles:
+        for cp in profile.get("column_profiles", []):
+            candidates = cp.get("semantic_candidates", []) if isinstance(cp.get("semantic_candidates"), list) else []
+            if len(candidates) < 2:
+                continue
+            top = float(candidates[0].get("score", 0.0) or 0.0)
+            second = float(candidates[1].get("score", 0.0) or 0.0)
+            if abs(top - second) <= 0.08:
+                semantic_ambiguities.append(
+                    {
+                        "table": profile.get("table"),
+                        "column": cp.get("column"),
+                        "primary_role": candidates[0].get("role"),
+                        "secondary_role": candidates[1].get("role"),
+                        "confidence_gap": round(float(top - second), 3),
+                        "explanation": cp.get("semantic_explanation", ""),
+                    }
+                )
+    semantic_avg_role_confidence = round(
+        float(
+            np.mean(
+                [
+                    cp.get("semantic_confidence", 0.0)
+                    for profile in table_profiles
+                    for cp in profile.get("column_profiles", [])
+                ]
+            )
+        )
+        if table_profiles
+        else 0.0,
+        4,
+    )
 
     emit(88, "Generating business context and ERD")
     business_context = compute_business_context(table_profiles, merged_relationships)
@@ -157,6 +258,17 @@ def run_analysis(
         "avg_quality_score": avg_quality,
         "dictionary": dictionary_df,
         "business_context": business_context,
+        "semantic_layer": {
+            "config_version": str(semantic_model.get("version", "1.0.0")),
+            "config_errors": semantic_config_errors,
+            "table_entities": semantic_entities,
+            "constraints": semantic_constraints,
+            "metrics": semantic_metrics,
+            "mapping_suggestions": semantic_suggestions,
+            "ambiguities": semantic_ambiguities,
+            "avg_role_confidence": semantic_avg_role_confidence,
+            "uplift_report": uplift_report,
+        },
         "er_html": er_html,
         "mermaid": mermaid,
         "erd_renderer": erd_renderer,

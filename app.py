@@ -29,6 +29,16 @@ from nexus.ingestion import format_db_connection_error, test_database_connection
 from nexus.models import APP_TITLE, DBConnectionConfig
 from nexus.orchestration import orchestrate_llm_task
 from nexus.provisioning import provision_mysql_from_dictionary, test_mysql_connection
+from nexus.semantic import (
+    append_semantic_history,
+    apply_override_patch,
+    build_override_patch,
+    compute_semantic_drift,
+    load_semantic_config,
+    load_semantic_history,
+    save_semantic_config,
+    summarize_semantic_layer,
+)
 
 
 SCHEMA_CHANGE_LOG_FILE = Path("schema_change_history.jsonl")
@@ -928,8 +938,8 @@ def main() -> None:
         ai_provider = "ollama" if ai_provider_label.startswith("Ollama") else "gemini"
         ai_timeout_seconds = st.slider("AI timeout (seconds)", min_value=30, max_value=180, value=60, step=10)
 
-        default_ollama_endpoint = st.secrets.get("OLLAMA_ENDPOINT", os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434"))
-        default_ollama_api_key = st.secrets.get("OLLAMA_API_KEY", os.getenv("OLLAMA_API_KEY", ""))
+        default_ollama_endpoint = _read_secret("OLLAMA_ENDPOINT", os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434"))
+        default_ollama_api_key = _read_secret("OLLAMA_API_KEY", os.getenv("OLLAMA_API_KEY", ""))
 
         ollama_endpoint = str(default_ollama_endpoint)
         ollama_api_key = str(default_ollama_api_key)
@@ -1142,6 +1152,15 @@ def main() -> None:
 
     st.session_state["analysis_result"] = analysis
 
+    semantic_layer_snapshot = analysis.get("semantic_layer", {}) if isinstance(analysis.get("semantic_layer"), dict) else {}
+    semantic_summary = summarize_semantic_layer(semantic_layer_snapshot)
+    semantic_history = load_semantic_history(limit=1)
+    prior_summary = semantic_history[-1] if semantic_history else None
+    semantic_drift = compute_semantic_drift(semantic_summary, prior_summary)
+    semantic_layer_snapshot["drift_report"] = semantic_drift
+    analysis["semantic_layer"] = semantic_layer_snapshot
+    append_semantic_history(semantic_summary, source="streamlit")
+
     st.session_state["agent_tables_snapshot"] = analysis.get("tables", {})
 
     authed = bool(st.session_state.get("agent_auth_state", {}).get("ok"))
@@ -1189,8 +1208,17 @@ def main() -> None:
     render_header(analysis)
     render_metric_explanations()
 
-    overview_tab, schema_tab, relation_tab, quality_tab, dictionary_tab, ai_tab, export_tab = st.tabs(
-        ["Overview", "Schema", "ER Graph", "Data Quality", "Data Dictionary", "AI Analyst", "Exports & Audit"]
+    overview_tab, schema_tab, relation_tab, semantic_tab, quality_tab, dictionary_tab, ai_tab, export_tab = st.tabs(
+        [
+            "Overview",
+            "Schema",
+            "ER Graph",
+            "Semantic Layer",
+            "Data Quality",
+            "Data Dictionary",
+            "AI Analyst",
+            "Exports & Audit",
+        ]
     )
 
     with overview_tab:
@@ -1285,6 +1313,11 @@ def main() -> None:
                         "column",
                         "sample_dtype",
                         "semantic_role",
+                        "semantic_confidence",
+                        "semantic_source",
+                        "semantic_entity",
+                        "canonical_name",
+                        "business_term",
                         "null_percent",
                         "unique_percent",
                         "dominant_value_type",
@@ -1298,6 +1331,132 @@ def main() -> None:
                 use_container_width=True,
                 hide_index=True,
                 height=350,
+            )
+
+    with semantic_tab:
+        semantic_layer = analysis.get("semantic_layer", {}) if isinstance(analysis.get("semantic_layer"), dict) else {}
+        st.subheader("Semantic Metadata Layer")
+        st.caption(
+            "The semantic layer maps columns to business meaning (role, canonical name, entity) and improves inference confidence."
+        )
+
+        sem_k1, sem_k2, sem_k3, sem_k4 = st.columns(4)
+        with sem_k1:
+            st.metric("Config Version", str(semantic_layer.get("config_version", "n/a")))
+        with sem_k2:
+            st.metric("Avg Role Confidence", f"{float(semantic_layer.get('avg_role_confidence', 0.0) or 0.0):.2f}")
+        with sem_k3:
+            st.metric("Constraint Violations", f"{len(semantic_layer.get('constraints', []) or [])}")
+        with sem_k4:
+            metric_items = semantic_layer.get("metrics", []) if isinstance(semantic_layer.get("metrics"), list) else []
+            ok_metrics = len([m for m in metric_items if str(m.get("status", "ok")) == "ok"])
+            st.metric("Semantic Metrics OK", f"{ok_metrics}/{len(metric_items)}")
+
+        config_errors = semantic_layer.get("config_errors", []) if isinstance(semantic_layer.get("config_errors"), list) else []
+        if config_errors:
+            st.error("Semantic config validation errors detected:")
+            for err in config_errors:
+                st.write(f"- {err}")
+
+        entities = semantic_layer.get("table_entities", []) if isinstance(semantic_layer.get("table_entities"), list) else []
+        if entities:
+            st.markdown("**Table to Entity Mapping**")
+            st.dataframe(pd.DataFrame(entities), use_container_width=True, hide_index=True, height=220)
+
+        semantic_metrics_df = pd.DataFrame(metric_items) if metric_items else pd.DataFrame()
+        if not semantic_metrics_df.empty:
+            st.markdown("**Semantic Metrics**")
+            st.dataframe(semantic_metrics_df, use_container_width=True, hide_index=True, height=220)
+
+        constraints = semantic_layer.get("constraints", []) if isinstance(semantic_layer.get("constraints"), list) else []
+        if constraints:
+            st.markdown("**Constraint Violations**")
+            st.dataframe(pd.DataFrame(constraints), use_container_width=True, hide_index=True, height=220)
+        else:
+            st.success("No semantic constraint violations detected for this run.")
+
+        uplift_report = semantic_layer.get("uplift_report", {}) if isinstance(semantic_layer.get("uplift_report"), dict) else {}
+        if uplift_report:
+            st.markdown("**Semantic Confidence Uplift Report (Before vs After)**")
+            up_a, up_b, up_c = st.columns(3)
+            with up_a:
+                st.metric(
+                    "Baseline Avg Confidence",
+                    f"{float(uplift_report.get('baseline_avg_confidence', 0.0) or 0.0):.3f}",
+                )
+            with up_b:
+                st.metric(
+                    "Semantic Avg Confidence",
+                    f"{float(uplift_report.get('semantic_avg_confidence', 0.0) or 0.0):.3f}",
+                )
+            with up_c:
+                st.metric(
+                    "Delta",
+                    f"{float(uplift_report.get('delta_avg_confidence', 0.0) or 0.0):+.3f}",
+                )
+
+        drift_report = semantic_layer.get("drift_report", {}) if isinstance(semantic_layer.get("drift_report"), dict) else {}
+        st.markdown("**Semantic Drift Report (Run-to-Run)**")
+        if drift_report.get("has_previous"):
+            d1, d2, d3 = st.columns(3)
+            with d1:
+                st.metric("Delta Role Confidence", f"{float(drift_report.get('delta_avg_role_confidence', 0.0) or 0.0):+.4f}")
+            with d2:
+                st.metric("Delta Violations", f"{int(drift_report.get('delta_constraint_violations', 0) or 0):+d}")
+            with d3:
+                st.metric("Delta Ambiguities", f"{int(drift_report.get('delta_ambiguities', 0) or 0):+d}")
+        else:
+            st.info(str(drift_report.get("message", "No previous semantic run found.")))
+
+        suggestions_blob = semantic_layer.get("mapping_suggestions", {}) if isinstance(semantic_layer.get("mapping_suggestions"), dict) else {}
+        suggestions = suggestions_blob.get("suggestions", []) if isinstance(suggestions_blob.get("suggestions"), list) else []
+        if suggestions:
+            st.markdown("**Top Semantic Mapping Suggestions**")
+            top_suggestions = pd.DataFrame(suggestions).head(40)
+            st.dataframe(top_suggestions, use_container_width=True, hide_index=True, height=280)
+
+            st.markdown("**One-Click Auto-Lock High-Confidence Suggestions**")
+            auto_col_1, auto_col_2, auto_col_3 = st.columns(3)
+            with auto_col_1:
+                auto_threshold = st.slider("Min confidence", min_value=0.50, max_value=1.00, value=0.90, step=0.01)
+            with auto_col_2:
+                auto_max_items = st.number_input("Max overrides", min_value=1, max_value=500, value=100, step=1)
+            with auto_col_3:
+                overwrite_existing = st.checkbox("Overwrite existing overrides", value=False)
+
+            if st.button("Apply suggested overrides", use_container_width=True):
+                config = load_semantic_config()
+                patch = build_override_patch(
+                    suggestions,
+                    min_confidence=float(auto_threshold),
+                    max_items=int(auto_max_items),
+                )
+                result = apply_override_patch(config, patch, overwrite_existing=overwrite_existing)
+                updated_config = result.get("config", config)
+                save_semantic_config(updated_config)
+                st.success(
+                    f"Applied {int(result.get('applied', 0))} overrides "
+                    f"(skipped existing: {int(result.get('skipped_existing', 0))}). Re-run analysis to see impact."
+                )
+
+        ambiguities = semantic_layer.get("ambiguities", []) if isinstance(semantic_layer.get("ambiguities"), list) else []
+        if ambiguities:
+            st.markdown("**Semantic Ambiguities (Needs Human Confirmation)**")
+            st.dataframe(pd.DataFrame(ambiguities), use_container_width=True, hide_index=True, height=220)
+            st.warning(
+                "Columns in this list have close competing semantic roles. "
+                "Use semantic_layer.json column_overrides to lock these roles and increase system accuracy."
+            )
+        else:
+            st.success("No high-risk semantic ambiguities detected in this run.")
+
+        if suggestions:
+            st.download_button(
+                "Download semantic suggestions JSON",
+                data=json.dumps(suggestions_blob, indent=2, default=str).encode("utf-8"),
+                file_name="semantic_suggestions.json",
+                mime="application/json",
+                use_container_width=True,
             )
 
     with relation_tab:
@@ -1514,6 +1673,7 @@ def main() -> None:
             "avg_quality_score": analysis["avg_quality_score"],
             "table_profiles": analysis["table_profiles"],
             "relationships": analysis["relationships"],
+            "semantic_layer": analysis.get("semantic_layer", {}),
             "data_dictionary": dict_export.to_dict(orient="records"),
             "dictionary_change_log": st.session_state.get("dictionary_change_log", []),
             "business_context": analysis["business_context"],

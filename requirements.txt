@@ -6,3 +6,6 @@ pyvis
 requests
 sqlalchemy
 reportlab
+fastapi
+uvicorn[standard]
+python-multipart

@@ -26,6 +26,19 @@ from nexus.agent_email import (
     run_agent_inbox_loop,
 )
 from nexus.models import DBConnectionConfig
+from nexus.orchestration import orchestrate_llm_task
+from nexus.semantic import (
+    append_semantic_history,
+    apply_override_patch,
+    build_override_patch,
+    compute_semantic_drift,
+    load_semantic_history,
+    load_semantic_config,
+    save_semantic_config,
+    summarize_semantic_layer,
+    suggest_semantic_mappings,
+    validate_semantic_config,
+)
 
 app = FastAPI()
 
@@ -88,6 +101,31 @@ class AgentAutoReplyRequest(BaseModel):
     ollama_model: str = "llama2"
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.0-flash"
+
+
+class SemanticConfigUpdateRequest(BaseModel):
+    config: Dict[str, Any]
+
+
+class SemanticApplyOverridesRequest(BaseModel):
+    min_confidence: float = 0.9
+    max_items: int = 200
+    overwrite_existing: bool = False
+    include_tables: List[str] = []
+    exclude_roles: List[str] = []
+
+
+class AIBriefRequest(BaseModel):
+    analysis: Dict[str, Any]
+    prompt: str = ""
+    provider_preference: Optional[str] = None
+    fallback_provider: Optional[str] = None
+    ollama_endpoint: Optional[str] = None
+    ollama_model: Optional[str] = None
+    ollama_api_key: Optional[str] = None
+    gemini_model: Optional[str] = None
+    gemini_api_key: Optional[str] = None
+    timeout_seconds: int = 120
 
 
 def _load_streamlit_secrets() -> Dict[str, Any]:
@@ -218,6 +256,15 @@ async def analyze_csv(
             progress_callback=None,
             erd_layout_direction="TB",
         )
+
+        semantic_layer = results.get("semantic_layer", {}) if isinstance(results.get("semantic_layer"), dict) else {}
+        current_summary = summarize_semantic_layer(semantic_layer)
+        history = load_semantic_history(limit=1)
+        previous_summary = history[-1] if history else None
+        drift = compute_semantic_drift(current_summary, previous_summary)
+        semantic_layer["drift_report"] = drift
+        results["semantic_layer"] = semantic_layer
+        append_semantic_history(current_summary, source="api-csv")
         
         import json
         # Pop pandas df's that crash json
@@ -280,6 +327,15 @@ async def analyze_db(
             db_config=config,
             progress_callback=None,
         )
+
+        semantic_layer = results.get("semantic_layer", {}) if isinstance(results.get("semantic_layer"), dict) else {}
+        current_summary = summarize_semantic_layer(semantic_layer)
+        history = load_semantic_history(limit=1)
+        previous_summary = history[-1] if history else None
+        drift = compute_semantic_drift(current_summary, previous_summary)
+        semantic_layer["drift_report"] = drift
+        results["semantic_layer"] = semantic_layer
+        append_semantic_history(current_summary, source="api-db")
         
         import json
         tables_df = results.pop('tables', {})
@@ -312,14 +368,136 @@ async def analyze_db(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/semantic/config")
+async def semantic_get_config():
+    config = load_semantic_config()
+    errors = validate_semantic_config(config)
+    return {
+        "config": sanitize_for_json(config),
+        "validation_errors": errors,
+        "valid": len(errors) == 0,
+    }
+
+
+@app.put("/api/semantic/config")
+async def semantic_update_config(payload: SemanticConfigUpdateRequest):
+    errors = validate_semantic_config(payload.config)
+    if errors:
+        raise HTTPException(status_code=400, detail={"validation_errors": errors})
+    save_semantic_config(payload.config)
+    return {"ok": True, "message": "Semantic config updated.", "config": sanitize_for_json(payload.config)}
+
+
+@app.post("/api/semantic/validate")
+async def semantic_validate_config(payload: SemanticConfigUpdateRequest):
+    errors = validate_semantic_config(payload.config)
+    return {
+        "valid": len(errors) == 0,
+        "validation_errors": errors,
+    }
+
+
+@app.get("/api/semantic/suggest")
+async def semantic_suggest_mappings():
+    tables_snapshot = _get_latest_tables_snapshot()
+    if not tables_snapshot:
+        raise HTTPException(status_code=400, detail="No analyzed tables are available yet. Analyze data first.")
+    config = load_semantic_config()
+    suggestions = suggest_semantic_mappings(tables_snapshot, config)
+    return sanitize_for_json(suggestions)
+
+
+@app.get("/api/semantic/ambiguities")
+async def semantic_ambiguities(gap_threshold: float = 0.08):
+    tables_snapshot = _get_latest_tables_snapshot()
+    if not tables_snapshot:
+        raise HTTPException(status_code=400, detail="No analyzed tables are available yet. Analyze data first.")
+
+    config = load_semantic_config()
+    suggestions = suggest_semantic_mappings(tables_snapshot, config)
+    rows = suggestions.get("suggestions", []) if isinstance(suggestions, dict) else []
+
+    ambiguity_rows: List[Dict[str, Any]] = []
+    for row in rows:
+        candidates = row.get("candidates", []) if isinstance(row.get("candidates"), list) else []
+        if len(candidates) < 2:
+            continue
+        top = float(candidates[0].get("score", 0.0) or 0.0)
+        second = float(candidates[1].get("score", 0.0) or 0.0)
+        gap = top - second
+        if gap <= float(gap_threshold):
+            ambiguity_rows.append(
+                {
+                    "table": row.get("table"),
+                    "column": row.get("column"),
+                    "primary_role": candidates[0].get("role"),
+                    "secondary_role": candidates[1].get("role"),
+                    "confidence_gap": round(float(gap), 3),
+                    "explanation": row.get("explanation", ""),
+                }
+            )
+
+    return {"ambiguities": sanitize_for_json(ambiguity_rows), "threshold": float(gap_threshold)}
+
+
+@app.post("/api/semantic/overrides/apply")
+async def semantic_apply_overrides(payload: SemanticApplyOverridesRequest):
+    tables_snapshot = _get_latest_tables_snapshot()
+    if not tables_snapshot:
+        raise HTTPException(status_code=400, detail="No analyzed tables are available yet. Analyze data first.")
+
+    config = load_semantic_config()
+    suggestions = suggest_semantic_mappings(tables_snapshot, config)
+    rows = suggestions.get("suggestions", []) if isinstance(suggestions, dict) else []
+    patch = build_override_patch(
+        rows,
+        min_confidence=payload.min_confidence,
+        max_items=payload.max_items,
+        include_tables=payload.include_tables,
+        exclude_roles=payload.exclude_roles,
+    )
+    apply_result = apply_override_patch(config, patch, overwrite_existing=payload.overwrite_existing)
+    updated_config = apply_result.get("config", config)
+    errors = validate_semantic_config(updated_config)
+    if errors:
+        raise HTTPException(status_code=400, detail={"validation_errors": errors})
+
+    save_semantic_config(updated_config)
+    return {
+        "ok": True,
+        "applied": apply_result.get("applied", 0),
+        "skipped_existing": apply_result.get("skipped_existing", 0),
+        "proposed": apply_result.get("proposed", 0),
+        "message": "Semantic overrides applied from high-confidence suggestions.",
+    }
+
+
+@app.get("/api/semantic/drift")
+async def semantic_drift_history(limit: int = 50):
+    safe_limit = max(1, min(int(limit), 500))
+    history = load_semantic_history(limit=safe_limit)
+    if not history:
+        return {"history": [], "latest_drift": {"has_previous": False, "message": "No semantic history found."}}
+
+    latest = history[-1]
+    previous = history[-2] if len(history) > 1 else None
+    drift = compute_semantic_drift(latest, previous)
+    return {"history": sanitize_for_json(history), "latest_drift": sanitize_for_json(drift)}
+
+
 @app.get("/api/agent/defaults")
 async def agent_defaults():
-    endpoint = "http://localhost:11434"
+    endpoint = _cfg_value("OLLAMA_ENDPOINT", "http://localhost:11434")
     models: List[str] = []
     try:
         models = ollama_get_models(endpoint)
     except Exception:
         models = []
+
+    gemini_key = _cfg_value("GEMINI_API_KEY", "").strip()
+    default_ai_provider = _cfg_value("NEXUS_AI_PROVIDER", "gemini" if gemini_key else "ollama").strip().lower()
+    if default_ai_provider not in {"ollama", "gemini"}:
+        default_ai_provider = "gemini" if gemini_key else "ollama"
 
     return {
         "firebase": {
@@ -334,11 +512,55 @@ async def agent_defaults():
         "smtpPort": 587,
         "pollSeconds": _MIN_AGENT_POLL_SECONDS,
         "maxMessagesPerCycle": 5,
-        "aiProvider": "ollama",
+        "aiProvider": default_ai_provider,
         "ollamaEndpoint": endpoint,
         "ollamaModels": models,
-        "ollamaModel": models[0] if models else "llama2",
-        "geminiModel": "gemini-2.0-flash",
+        "ollamaModel": _cfg_value("OLLAMA_MODEL", models[0] if models else "llama3:latest"),
+        "geminiModel": _cfg_value("GEMINI_MODEL", "gemini-2.0-flash"),
+        "geminiApiKey": gemini_key,
+    }
+
+
+@app.post("/api/ai/brief")
+async def generate_ai_brief(payload: AIBriefRequest):
+    analysis = payload.analysis if isinstance(payload.analysis, dict) else {}
+    if not analysis:
+        raise HTTPException(status_code=400, detail="Analysis payload is required.")
+
+    resolved_gemini_api_key = (payload.gemini_api_key or _cfg_value("GEMINI_API_KEY", "")).strip()
+    default_provider = "gemini" if resolved_gemini_api_key else "ollama"
+    provider_preference = (payload.provider_preference or _cfg_value("NEXUS_AI_PROVIDER", default_provider)).strip().lower()
+    if provider_preference not in {"ollama", "gemini"}:
+        provider_preference = default_provider
+
+    fallback_provider = (payload.fallback_provider or "").strip().lower()
+    if fallback_provider not in {"ollama", "gemini"}:
+        fallback_provider = "gemini" if provider_preference == "ollama" else "ollama"
+
+    timeout_seconds = max(15, min(int(payload.timeout_seconds), 120))
+
+    orchestration_result = orchestrate_llm_task(
+        analysis=analysis,
+        task="executive_brief",
+        provider_preference=provider_preference,
+        fallback_provider=fallback_provider,
+        ollama_model=(payload.ollama_model or _cfg_value("OLLAMA_MODEL", "llama3:latest")).strip() or "llama3:latest",
+        ollama_endpoint=(payload.ollama_endpoint or _cfg_value("OLLAMA_ENDPOINT", "http://localhost:11434")).strip() or "http://localhost:11434",
+        ollama_api_key=(payload.ollama_api_key or _cfg_value("OLLAMA_API_KEY", "")).strip(),
+        gemini_model=(payload.gemini_model or _cfg_value("GEMINI_MODEL", "gemini-2.0-flash")).strip() or "gemini-2.0-flash",
+        gemini_api_key=resolved_gemini_api_key,
+        timeout_seconds=timeout_seconds,
+        additional_instructions=(payload.prompt or "").strip(),
+    )
+
+    ai_brief = str(orchestration_result.get("output", "")).strip()
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    (OUTPUT_DIR / "ai_brief.txt").write_text(ai_brief, encoding="utf-8")
+
+    return {
+        "ok": True,
+        "ai_brief": ai_brief,
+        "orchestration": sanitize_for_json(orchestration_result),
     }
 
 

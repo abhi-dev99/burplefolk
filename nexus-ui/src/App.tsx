@@ -8,7 +8,7 @@ import { toPng, toSvg } from 'html-to-image';
 import ERDiagram from './components/ERDiagram';
 import ErrorBoundary from './components/ErrorBoundary';
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000/api';
 
 type AgentAuthState = {
   ok: boolean;
@@ -146,6 +146,7 @@ function TopNav({
   const navItems = [
     { id: 'overview', label: 'Overview' },
     { id: 'schema', label: 'Schema' },
+    { id: 'semantic', label: 'Semantic' },
     { id: 'quality', label: 'Quality' },
     { id: 'er', label: 'ER Diagram' },
     { id: 'dictionary', label: 'Dictionary' },
@@ -202,6 +203,115 @@ const highlightText = (text: string) => {
   return <span dangerouslySetInnerHTML={{ __html: highlighted }} />;
 };
 
+const escapeHtml = (value: string) =>
+  String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const formatInlineMarkdown = (line: string) => {
+  return escapeHtml(line)
+    .replace(/\*\*(.*?)\*\*/g, '<strong class="font-medium text-neutral-900 dark:text-white">$1</strong>')
+    .replace(/`([^`]+)`/g, '<code class="bg-black/5 dark:bg-white/10 px-1.5 py-0.5 rounded text-sm font-mono text-purple-600 dark:text-purple-300">$1</code>');
+};
+
+const formatAiBriefToHtml = (raw: string) => {
+  const text = String(raw || '').replace(/\r\n/g, '\n');
+  const lines = text.split('\n');
+  const out: string[] = [];
+
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i] || '';
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      i += 1;
+      continue;
+    }
+
+    // Markdown pipe table block.
+    if (trimmed.includes('|') && i + 1 < lines.length && /^\s*\|?\s*[-:]+/.test(lines[i + 1] || '')) {
+      const tableLines: string[] = [line, lines[i + 1]];
+      i += 2;
+      while (i < lines.length && (lines[i] || '').includes('|') && (lines[i] || '').trim()) {
+        tableLines.push(lines[i]);
+        i += 1;
+      }
+
+      const cells = (row: string) =>
+        row
+          .trim()
+          .replace(/^\|/, '')
+          .replace(/\|$/, '')
+          .split('|')
+          .map((c) => formatInlineMarkdown(c.trim()));
+
+      const headerCells = cells(tableLines[0]);
+      const bodyRows = tableLines.slice(2).map((r) => cells(r));
+
+      out.push('<div class="overflow-x-auto my-4"><table class="min-w-full border border-black/10 dark:border-white/10 rounded-xl overflow-hidden">');
+      out.push('<thead class="bg-black/5 dark:bg-white/10"><tr>');
+      headerCells.forEach((h) => out.push(`<th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider">${h}</th>`));
+      out.push('</tr></thead><tbody>');
+      bodyRows.forEach((row) => {
+        out.push('<tr class="border-t border-black/5 dark:border-white/10">');
+        row.forEach((c) => out.push(`<td class="px-3 py-2 text-sm">${c}</td>`));
+        out.push('</tr>');
+      });
+      out.push('</tbody></table></div>');
+      continue;
+    }
+
+    if (/^###\s+/.test(trimmed)) {
+      out.push(`<h3 class="text-xl font-medium text-purple-600 dark:text-purple-400 mb-2 mt-4">${formatInlineMarkdown(trimmed.replace(/^###\s+/, ''))}</h3>`);
+      i += 1;
+      continue;
+    }
+    if (/^##\s+/.test(trimmed)) {
+      out.push(`<h3 class="text-xl font-medium text-purple-600 dark:text-purple-400 mb-2 mt-4">${formatInlineMarkdown(trimmed.replace(/^##\s+/, ''))}</h3>`);
+      i += 1;
+      continue;
+    }
+    if (/^#\s+/.test(trimmed)) {
+      out.push(`<h3 class="text-xl font-medium text-purple-600 dark:text-purple-400 mb-2 mt-4">${formatInlineMarkdown(trimmed.replace(/^#\s+/, ''))}</h3>`);
+      i += 1;
+      continue;
+    }
+
+    if (/^[-*]\s+/.test(trimmed)) {
+      const items: string[] = [];
+      while (i < lines.length && /^\s*[-*]\s+/.test((lines[i] || '').trim())) {
+        items.push((lines[i] || '').trim().replace(/^[-*]\s+/, ''));
+        i += 1;
+      }
+      out.push('<ul class="list-disc list-inside my-2 space-y-1">');
+      items.forEach((item) => out.push(`<li>${formatInlineMarkdown(item)}</li>`));
+      out.push('</ul>');
+      continue;
+    }
+
+    if (/^\d+\.\s+/.test(trimmed)) {
+      const items: string[] = [];
+      while (i < lines.length && /^\s*\d+\.\s+/.test((lines[i] || '').trim())) {
+        items.push((lines[i] || '').trim().replace(/^\d+\.\s+/, ''));
+        i += 1;
+      }
+      out.push('<ol class="list-decimal list-inside my-2 space-y-1">');
+      items.forEach((item) => out.push(`<li>${formatInlineMarkdown(item)}</li>`));
+      out.push('</ol>');
+      continue;
+    }
+
+    out.push(`<p class="my-2">${formatInlineMarkdown(trimmed)}</p>`);
+    i += 1;
+  }
+
+  return out.join('');
+};
+
 function DataView({ activeTab, analysisData, processedRowLimit }: { activeTab: string, analysisData: any, processedRowLimit: number }) {
   const mermaidRef = useRef<HTMLDivElement>(null);
   const erDiagramRef = useRef<HTMLDivElement>(null);
@@ -229,24 +339,92 @@ function DataView({ activeTab, analysisData, processedRowLimit }: { activeTab: s
     );
   };
   const [dictSearch, setDictSearch] = useState('');
+  const [qualitySort, setQualitySort] = useState<'asc' | 'desc'>('asc');
   const [aiPrompt, setAiPrompt] = useState('Generate a comprehensive executive brief addressing data completeness and consistency...');
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
   const [aiResponse, setAiResponse] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiOrchestration, setAiOrchestration] = useState<any | null>(null);
+  const [aiProvider, setAiProvider] = useState<'gemini' | 'ollama'>('gemini');
+  const [aiGeminiApiKey, setAiGeminiApiKey] = useState('');
+  const [aiGeminiModel, setAiGeminiModel] = useState('gemini-2.0-flash');
+  const [aiOllamaEndpoint, setAiOllamaEndpoint] = useState('http://localhost:11434');
+  const [aiOllamaModel, setAiOllamaModel] = useState('llama3:latest');
+  const [aiOllamaModels, setAiOllamaModels] = useState<string[]>([]);
+  const [aiModelLoading, setAiModelLoading] = useState(false);
 
   const tables = useMemo(() => analysisData?.analysis?.table_profiles ? analysisData.analysis.table_profiles.map((p:any) => p.table) : [], [analysisData]);
   const [editorTarget, setEditorTarget] = useState<string | null>(null);
   const currentEditorTarget = editorTarget || tables[0] || '';
 
+  const handleAiAction = async () => {
+    if (!analysisData?.analysis) {
+      setAiError('Analyze a dataset first before generating an AI brief.');
+      return;
+    }
 
-
-
-  const handleAiAction = () => {
-     setIsGeneratingAi(true);
-     setTimeout(() => {
-        setAiResponse("### Executive Analyst Brief\n\n**Schema Overview**\nNexus has evaluated the relational telemetry. The core tables exhibit 95%+ structural consistency, but temporal cadence remains erratic in edge models.\n\n**Recommendations:**\n1. Enforce strict `NOT NULL` constraints on the `orders` bridge.\n2. Foreign keys between `stores` and `staffs` are highly confident (0.97), materialize this relationship explicitly.\n\n_Generated dynamically by localized Nexus Agent._");
-        setIsGeneratingAi(false);
-     }, 2000);
+    setIsGeneratingAi(true);
+    setAiError(null);
+    try {
+      const fallbackProvider = aiProvider === 'gemini' ? 'ollama' : 'gemini';
+      const timeoutSeconds = aiProvider === 'ollama' ? 180 : 90;
+      const res = await axios.post(`${API_BASE}/ai/brief`, {
+        analysis: analysisData.analysis,
+        prompt: aiPrompt,
+        provider_preference: aiProvider,
+        fallback_provider: fallbackProvider,
+        gemini_api_key: aiGeminiApiKey,
+        gemini_model: aiGeminiModel,
+        ollama_endpoint: aiOllamaEndpoint,
+        ollama_model: aiOllamaModel,
+        timeout_seconds: timeoutSeconds,
+      });
+      const nextBrief = String(res.data?.ai_brief || '').trim();
+      setAiResponse(nextBrief || null);
+      setAiOrchestration(res.data?.orchestration || null);
+    } catch (err: any) {
+      const message = String(err?.response?.data?.detail || err?.message || 'Failed to generate AI brief.');
+      setAiError(message);
+    } finally {
+      setIsGeneratingAi(false);
+    }
   };
+
+  const refreshAiOllamaModels = async (endpoint: string) => {
+    setAiModelLoading(true);
+    try {
+      const res = await axios.get(`${API_BASE}/agent/ollama-models`, { params: { endpoint } });
+      const models = Array.isArray(res.data?.models) ? (res.data.models as string[]) : [];
+      setAiOllamaModels(models);
+      if (models.length > 0 && !models.includes(aiOllamaModel)) {
+        setAiOllamaModel(models[0]);
+      }
+    } catch {
+      setAiOllamaModels([]);
+    } finally {
+      setAiModelLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const loadAiDefaults = async () => {
+      try {
+        const res = await axios.get(`${API_BASE}/agent/defaults`);
+        const defaults = res.data || {};
+        const provider = defaults.aiProvider === 'ollama' ? 'ollama' : 'gemini';
+        setAiProvider(provider);
+        setAiGeminiApiKey(String(defaults.geminiApiKey || ''));
+        setAiGeminiModel(String(defaults.geminiModel || 'gemini-2.0-flash'));
+        setAiOllamaEndpoint(String(defaults.ollamaEndpoint || 'http://localhost:11434'));
+        const models = Array.isArray(defaults.ollamaModels) ? (defaults.ollamaModels as string[]) : [];
+        setAiOllamaModels(models);
+        setAiOllamaModel(String(defaults.ollamaModel || models[0] || 'llama3:latest'));
+      } catch {
+        // Keep local defaults.
+      }
+    };
+    loadAiDefaults();
+  }, []);
 
   useEffect(() => {
     if (activeTab === 'er' && analysisData?.er_diagram && mermaidRef.current) {
@@ -324,6 +502,53 @@ function DataView({ activeTab, analysisData, processedRowLimit }: { activeTab: s
 
   const overviewTables = analysisData?.analysis?.table_profiles || [];
   const avgQuality = analysisData?.analysis?.avg_quality_score || 0;
+  const relationships = Array.isArray(analysisData?.analysis?.relationships) ? analysisData.analysis.relationships : [];
+
+  const storageEstimateBytes = useMemo(() => {
+    const samples = analysisData?.sample_tables || {};
+    return overviewTables.reduce((acc: number, profile: any) => {
+      const tableName = String(profile?.table || '');
+      const estimatedRows = Number(profile?.estimated_total_rows || 0);
+      const sampleRows = Array.isArray(samples?.[tableName]) ? samples[tableName] : [];
+      const sampleBytes = sampleRows.length > 0
+        ? sampleRows.reduce((s: number, r: any) => s + JSON.stringify(r || {}).length, 0)
+        : 0;
+      const avgRowBytes = sampleRows.length > 0
+        ? Math.max(32, Math.round(sampleBytes / sampleRows.length))
+        : Math.max(32, Number(profile?.column_count || 4) * 16);
+      return acc + (estimatedRows * avgRowBytes);
+    }, 0);
+  }, [overviewTables, analysisData]);
+
+  const storageEstimateLabel = useMemo(() => {
+    if (storageEstimateBytes >= 1024 * 1024) {
+      return `${(storageEstimateBytes / (1024 * 1024)).toFixed(2)} MB`;
+    }
+    if (storageEstimateBytes >= 1024) {
+      return `${Math.max(1, Math.round(storageEstimateBytes / 1024))} KB`;
+    }
+    return `${Math.max(1, storageEstimateBytes)} B`;
+  }, [storageEstimateBytes]);
+
+  const orphanTableCount = useMemo(() => {
+    if (overviewTables.length === 0) {
+      return 0;
+    }
+    const connected = new Set<string>();
+    relationships.forEach((r: any) => {
+      const child = String(r?.child_table || '').trim();
+      const parent = String(r?.parent_table || '').trim();
+      if (child) connected.add(child);
+      if (parent) connected.add(parent);
+    });
+    return overviewTables.filter((t: any) => !connected.has(String(t?.table || ''))).length;
+  }, [overviewTables, relationships]);
+  const semanticLayer = analysisData?.analysis?.semantic_layer || {};
+  const semanticSuggestions = semanticLayer?.mapping_suggestions?.suggestions || [];
+  const semanticMetrics = semanticLayer?.metrics || [];
+  const semanticConstraints = semanticLayer?.constraints || [];
+  const semanticEntities = semanticLayer?.table_entities || [];
+  const semanticAmbiguities = semanticLayer?.ambiguities || [];
 
   return (
     <div className="w-full pb-20">
@@ -338,7 +563,7 @@ function DataView({ activeTab, analysisData, processedRowLimit }: { activeTab: s
           </GlassCard>
           <GlassCard className="p-8">
             <h3 className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest mb-2">Storage (Est)</h3>
-            <div className="text-5xl font-light text-neutral-900 dark:text-neutral-100">{Math.max(1, Math.round(tables.reduce((acc:number, t:any)=> acc + (t.estimated_total_rows||0)*(t.column_count||5)*8/1024, 0)))} <span className="text-2xl">KB</span></div>
+            <div className="text-5xl font-light text-neutral-900 dark:text-neutral-100">{storageEstimateLabel}</div>
           </GlassCard>
           <GlassCard className="p-8">
             <h3 className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest mb-2">Avg Quality</h3>
@@ -353,16 +578,32 @@ function DataView({ activeTab, analysisData, processedRowLimit }: { activeTab: s
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
           <GlassCard className="p-8">
             <h3 className="text-lg font-light text-neutral-900 dark:text-white mb-4">Risk Snapshot</h3>
-            <div className="space-y-4">
-              {tables.sort((a:any, b:any) => a.quality_score - b.quality_score).slice(0, 5).map((t:any) => (
-                <div key={t.table} className="flex justify-between items-center text-sm border-b border-black/5 dark:border-white/5 pb-2 last:border-0 last:pb-0">
-                  <span className="text-neutral-700 dark:text-neutral-300 font-medium">{t.table}</span>
-                  <div className="flex items-center gap-4">
-                    <span className="text-neutral-400 font-light">{t.issues?.length || 0} issues</span>
-                    <span className={clsx("font-medium", t.quality_score > 80 ? "text-emerald-500" : "text-rose-500")}>{t.quality_score}%</span>
-                  </div>
-                </div>
-              ))}
+            <div className="overflow-x-auto rounded-2xl border border-black/10 dark:border-white/10">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-black/5 dark:bg-white/10">
+                  <tr>
+                    <th className="px-4 py-3">table</th>
+                    <th className="px-4 py-3 text-right">quality_score</th>
+                    <th className="px-4 py-3 text-right">issues</th>
+                    <th className="px-4 py-3 text-right">rows</th>
+                    <th className="px-4 py-3 text-right">columns</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...overviewTables]
+                    .sort((a: any, b: any) => Number(a?.quality_score || 0) - Number(b?.quality_score || 0))
+                    .slice(0, 6)
+                    .map((t: any) => (
+                      <tr key={String(t?.table || '')} className="border-t border-black/5 dark:border-white/10">
+                        <td className="px-4 py-2.5 font-medium">{String(t?.table || '')}</td>
+                        <td className="px-4 py-2.5 text-right">{Number(t?.quality_score || 0).toFixed(2)}</td>
+                        <td className="px-4 py-2.5 text-right">{Array.isArray(t?.issues) ? t.issues.length : 0}</td>
+                        <td className="px-4 py-2.5 text-right">{Number(t?.estimated_total_rows || 0)}</td>
+                        <td className="px-4 py-2.5 text-right">{Number(t?.column_count || 0)}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
             </div>
           </GlassCard>
 
@@ -386,7 +627,7 @@ function DataView({ activeTab, analysisData, processedRowLimit }: { activeTab: s
                  </div>
                  <div className="flex items-center justify-between text-sm pb-2">
                    <span className="text-neutral-600 dark:text-neutral-300 font-light">Orphan Tables (No FKs)</span>
-                   <span className="text-amber-500 font-medium">{tables.filter((t:any) => !t.column_profiles?.some((c:any)=>String(c.semantic_role).includes('foreign'))).length} tables</span>
+                   <span className="text-amber-500 font-medium">{orphanTableCount} tables</span>
                  </div>
               </div>
           </GlassCard>
@@ -405,16 +646,19 @@ function DataView({ activeTab, analysisData, processedRowLimit }: { activeTab: s
           <div className="text-neutral-400 italic p-6">No schema data identified.</div>
         ) : (
           <>
-            <div className="flex flex-wrap gap-2 mb-8">
-              {profiles.map((p: any) => (
-                <button 
-                  key={`nav-${p.table}`} 
-                  onClick={() => document.getElementById(`schema-table-${p.table}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                  className="px-4 py-2 rounded-full border border-black/5 dark:border-white/5 hover:bg-black/5 dark:hover:bg-white/5 text-sm font-medium transition-colors cursor-pointer"
-                >
-                  {p.table}
-                </button>
-              ))}
+            {/* Sticky floating pill nav — stays below the topnav while scrolling */}
+            <div className="sticky top-[72px] z-40 mb-8 -mx-2">
+              <div className="flex flex-wrap gap-2 px-2 py-3 rounded-2xl bg-white/70 dark:bg-[#0b1220]/80 backdrop-blur-xl border border-black/5 dark:border-white/10 shadow-lg shadow-black/5 dark:shadow-black/20">
+                {profiles.map((p: any) => (
+                  <button 
+                    key={`nav-${p.table}`} 
+                    onClick={() => document.getElementById(`schema-table-${p.table}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                    className="px-4 py-1.5 rounded-full border border-black/5 dark:border-white/5 hover:bg-[#0059B5]/10 dark:hover:bg-[#60A5FA]/10 hover:text-[#0059B5] dark:hover:text-[#60A5FA] hover:border-[#0059B5]/20 dark:hover:border-[#60A5FA]/20 text-sm font-medium transition-all cursor-pointer text-neutral-600 dark:text-neutral-300"
+                  >
+                    {p.table}
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="grid gap-12">
               {profiles.map((profile: any) => (
@@ -491,24 +735,74 @@ function DataView({ activeTab, analysisData, processedRowLimit }: { activeTab: s
       {/* QUALITY */}
       <div className={clsx("animate-in fade-in slide-in-from-bottom-4 duration-700 w-full mt-24 print:mt-10 print:break-after-page print:block", activeTab !== 'quality' && "hidden")}>
         {(() => {
-          const profiles = overviewTables;
+          const sortedProfiles = [...overviewTables].sort((a: any, b: any) =>
+            qualitySort === 'asc' ? (a.quality_score || 0) - (b.quality_score || 0) : (b.quality_score || 0) - (a.quality_score || 0)
+          );
           return (
             <div className="w-full">
         <h2 className="text-4xl font-light tracking-tight text-neutral-900 dark:text-white mb-8">Data <span className="font-medium text-rose-500">Quality Health</span></h2>
-        
+
+        {/* Score formula banner */}
+        <div className="mb-6 flex items-center gap-3 px-5 py-3.5 rounded-2xl bg-[#0059B5]/5 dark:bg-[#60A5FA]/5 border border-[#0059B5]/10 dark:border-[#60A5FA]/10">
+          <div className="shrink-0 w-7 h-7 rounded-full bg-[#0059B5]/10 dark:bg-[#60A5FA]/10 flex items-center justify-center border border-[#0059B5]/20 dark:border-[#60A5FA]/20">
+            <span className="text-[#0059B5] dark:text-[#60A5FA] font-serif font-bold italic text-sm">f</span>
+          </div>
+          <p className="text-sm text-[#0059B5] dark:text-[#60A5FA] font-mono">
+            <span className="font-semibold">Health Score</span> = (Completeness × 0.5) + (Consistency × 0.5)
+          </p>
+          <span className="ml-auto text-xs text-neutral-400 font-light hidden sm:block">Hover a score to see per-table breakdown</span>
+        </div>
+
+        {/* Sticky floating pill nav */}
+        <div className="sticky top-[72px] z-40 mb-6 -mx-2">
+          <div className="flex flex-wrap gap-2 px-2 py-3 rounded-2xl bg-white/70 dark:bg-[#0b1220]/80 backdrop-blur-xl border border-black/5 dark:border-white/10 shadow-lg shadow-black/5 dark:shadow-black/20 items-center">
+            {sortedProfiles.map((p: any) => (
+              <button
+                key={`qnav-${p.table}`}
+                onClick={() => document.getElementById(`quality-table-${p.table}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                className={clsx(
+                  "px-4 py-1.5 rounded-full border text-sm font-medium transition-all cursor-pointer flex items-center gap-1.5",
+                  (p.quality_score || 0) > 80
+                    ? "border-emerald-500/20 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10"
+                    : (p.quality_score || 0) > 60
+                    ? "border-amber-500/20 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10"
+                    : "border-rose-500/20 text-rose-700 dark:text-rose-400 hover:bg-rose-500/10"
+                )}
+              >
+                {p.table}
+                <span className={clsx(
+                  "text-[10px] font-bold px-1.5 py-0.5 rounded-full",
+                  (p.quality_score || 0) > 80 ? "bg-emerald-500/15" : (p.quality_score || 0) > 60 ? "bg-amber-500/15" : "bg-rose-500/15"
+                )}>{Math.round(p.quality_score || 0)}%</span>
+              </button>
+            ))}
+            {/* Sort toggle */}
+            <button
+              onClick={() => setQualitySort(s => s === 'asc' ? 'desc' : 'asc')}
+              className="ml-auto flex items-center gap-2 px-4 py-1.5 rounded-full border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-neutral-600 dark:text-neutral-300 text-xs font-semibold uppercase tracking-wider transition-colors"
+            >
+              {qualitySort === 'asc' ? '↑ Worst first' : '↓ Best first'}
+            </button>
+          </div>
+        </div>
+
         <div className="grid gap-6">
-          {profiles.map((profile: any) => (
-            <GlassCard key={profile.table} className="p-8">
-               <div className="flex justify-between items-start mb-6">
+          {sortedProfiles.map((profile: any) => (
+            <div key={profile.table} id={`quality-table-${profile.table}`} className="scroll-mt-44">
+            <GlassCard className="p-8">
+               <div className="flex justify-between items-start mb-4">
                  <div>
                     <h3 className="text-2xl font-light text-neutral-900 dark:text-white mb-2">{profile.table}</h3>
                     <div className="flex gap-4 text-sm font-light text-neutral-500">
-                      <span>Completeness: {profile.completeness_score}%</span>
-                      <span>Consistency: {profile.consistency_score}%</span>
+                      <span>Completeness: <span className="font-medium text-neutral-700 dark:text-neutral-300">{profile.completeness_score}%</span></span>
+                      <span>Consistency: <span className="font-medium text-neutral-700 dark:text-neutral-300">{profile.consistency_score}%</span></span>
+                    </div>
+                    <div className="mt-1.5 text-xs font-mono text-neutral-400 dark:text-neutral-500">
+                      ({profile.completeness_score}% × 0.5) + ({profile.consistency_score}% × 0.5) = <span className={clsx("font-semibold", (profile.quality_score||0) > 80 ? "text-emerald-500" : (profile.quality_score||0) > 60 ? "text-amber-500" : "text-rose-500")}>{Math.round(profile.quality_score || 0)}%</span>
                     </div>
                  </div>
-                 <div className={clsx("text-5xl font-light", profile.quality_score > 80 ? "text-emerald-500" : profile.quality_score > 60 ? "text-amber-500" : "text-rose-500")}>
-                    {profile.quality_score}%
+                 <div className={clsx("text-5xl font-light tabular-nums shrink-0 ml-4", (profile.quality_score||0) > 80 ? "text-emerald-500" : (profile.quality_score||0) > 60 ? "text-amber-500" : "text-rose-500")}>
+                    {Math.round(profile.quality_score || 0)}%
                  </div>
                </div>
                
@@ -550,11 +844,130 @@ function DataView({ activeTab, analysisData, processedRowLimit }: { activeTab: s
                  </div>
                )}
             </GlassCard>
+            </div>
           ))}
         </div>
             </div>
           );
         })()}
+      </div>
+
+      {/* SEMANTIC */}
+      <div className={clsx("animate-in fade-in duration-700 w-full mt-24 print:mt-10 print:break-after-page print:block", activeTab !== 'semantic' && "hidden")}>
+        <h2 className="text-4xl font-light tracking-tight text-neutral-900 dark:text-white mb-8">Semantic <span className="font-medium text-[#0059B5]">Intelligence Layer</span></h2>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8">
+          <GlassCard className="p-6">
+            <h3 className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest mb-2">Config Version</h3>
+            <div className="text-3xl font-light text-neutral-900 dark:text-neutral-100">{String(semanticLayer?.config_version || 'n/a')}</div>
+          </GlassCard>
+          <GlassCard className="p-6">
+            <h3 className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest mb-2">Avg Role Confidence</h3>
+            <div className="text-3xl font-light text-[#0059B5] dark:text-[#60A5FA]">{Number(semanticLayer?.avg_role_confidence || 0).toFixed(2)}</div>
+          </GlassCard>
+          <GlassCard className="p-6">
+            <h3 className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest mb-2">Constraint Violations</h3>
+            <div className={clsx("text-3xl font-light", semanticConstraints.length > 0 ? "text-rose-500" : "text-emerald-500")}>{semanticConstraints.length}</div>
+          </GlassCard>
+          <GlassCard className="p-6">
+            <h3 className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest mb-2">Ambiguous Columns</h3>
+            <div className={clsx("text-3xl font-light", semanticAmbiguities.length > 0 ? "text-amber-500" : "text-emerald-500")}>{semanticAmbiguities.length}</div>
+          </GlassCard>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          <GlassCard className="overflow-hidden">
+            <div className="px-6 py-4 border-b border-black/5 dark:border-white/5 bg-black/5 dark:bg-white/5">
+              <h3 className="text-lg font-medium text-neutral-900 dark:text-neutral-100">Table Entity Mapping</h3>
+            </div>
+            <div className="p-4 max-h-[280px] overflow-auto">
+              {semanticEntities.length === 0 ? (
+                <p className="text-sm text-neutral-400">No semantic entities detected.</p>
+              ) : (
+                <div className="space-y-2">
+                  {semanticEntities.map((r: any, i: number) => (
+                    <div key={i} className="flex items-center justify-between text-sm border-b border-black/5 dark:border-white/5 pb-2 last:border-0">
+                      <span className="font-medium text-neutral-700 dark:text-neutral-200">{String(r.table)}</span>
+                      <span className="text-neutral-500">{String(r.entity)} ({Number(r.confidence || 0).toFixed(2)})</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </GlassCard>
+
+          <GlassCard className="overflow-hidden">
+            <div className="px-6 py-4 border-b border-black/5 dark:border-white/5 bg-black/5 dark:bg-white/5">
+              <h3 className="text-lg font-medium text-neutral-900 dark:text-neutral-100">Semantic Metrics</h3>
+            </div>
+            <div className="p-4 max-h-[280px] overflow-auto">
+              {semanticMetrics.length === 0 ? (
+                <p className="text-sm text-neutral-400">No semantic metrics available.</p>
+              ) : (
+                <div className="space-y-3">
+                  {semanticMetrics.map((m: any, i: number) => (
+                    <div key={i} className="rounded-xl border border-black/5 dark:border-white/10 p-3 bg-white/40 dark:bg-black/20">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{String(m.name)}</span>
+                        <span className={clsx("text-xs px-2 py-0.5 rounded-full", String(m.status) === 'ok' ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' : 'bg-amber-500/15 text-amber-700 dark:text-amber-400')}>
+                          {String(m.status || 'ok')}
+                        </span>
+                      </div>
+                      <div className="text-xs text-neutral-500 mt-1">kind: {String(m.kind)} | value: {String(m.value)}</div>
+                      {m.note ? <div className="text-xs text-neutral-400 mt-1">{String(m.note)}</div> : null}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </GlassCard>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <GlassCard className="overflow-hidden">
+            <div className="px-6 py-4 border-b border-black/5 dark:border-white/5 bg-black/5 dark:bg-white/5">
+              <h3 className="text-lg font-medium text-neutral-900 dark:text-neutral-100">Constraint Violations</h3>
+            </div>
+            <div className="p-4 max-h-[320px] overflow-auto">
+              {semanticConstraints.length === 0 ? (
+                <p className="text-sm text-emerald-600 dark:text-emerald-400">No semantic constraint violations detected.</p>
+              ) : (
+                <div className="space-y-2">
+                  {semanticConstraints.map((v: any, i: number) => (
+                    <div key={i} className="rounded-xl border border-rose-500/20 bg-rose-500/5 p-3">
+                      <div className="text-xs text-rose-500 font-semibold uppercase tracking-wider">{String(v.severity || 'warning')}</div>
+                      <div className="text-sm text-rose-700 dark:text-rose-300 mt-1">{String(v.message || '')}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </GlassCard>
+
+          <GlassCard className="overflow-hidden">
+            <div className="px-6 py-4 border-b border-black/5 dark:border-white/5 bg-black/5 dark:bg-white/5">
+              <h3 className="text-lg font-medium text-neutral-900 dark:text-neutral-100">Top Mapping Suggestions</h3>
+            </div>
+            <div className="p-4 max-h-[320px] overflow-auto">
+              {semanticSuggestions.length === 0 ? (
+                <p className="text-sm text-neutral-400">No semantic suggestions available.</p>
+              ) : (
+                <div className="space-y-2">
+                  {semanticSuggestions.slice(0, 25).map((s: any, i: number) => (
+                    <div key={i} className="rounded-xl border border-black/5 dark:border-white/10 p-3 bg-white/40 dark:bg-black/20">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{String(s.table)}.{String(s.column)}</span>
+                        <span className="text-xs text-neutral-500">{Number(s.confidence || 0).toFixed(2)}</span>
+                      </div>
+                      <div className="text-xs text-neutral-500 mt-1">role: {String(s.suggested_role)} | entity: {String(s.entity)}</div>
+                      {s.explanation ? <div className="text-xs text-neutral-400 mt-1">{String(s.explanation)}</div> : null}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </GlassCard>
+        </div>
       </div>
 
       {/* ER GRAPH */}
@@ -590,10 +1003,28 @@ function DataView({ activeTab, analysisData, processedRowLimit }: { activeTab: s
       <div className={clsx("animate-in fade-in duration-700 w-full mt-24 print:mt-10 print:break-after-page print:block", activeTab !== 'dictionary' && "hidden")}>
         {(() => {
           const dictionary = analysisData?.data_dict || [];
+          const dictTables = Array.from(new Set(dictionary.map((r: any) => r.table))) as string[];
           return (
             <div className="w-full">
         <h2 className="text-4xl font-light tracking-tight text-neutral-900 dark:text-white mb-8">Data <span className="font-medium text-[#0059B5]">Dictionary</span></h2>
-        
+
+        {/* Sticky floating pill nav */}
+        {dictTables.length > 0 && (
+          <div className="sticky top-[72px] z-40 mb-6 -mx-2">
+            <div className="flex flex-wrap gap-2 px-2 py-3 rounded-2xl bg-white/70 dark:bg-[#0b1220]/80 backdrop-blur-xl border border-black/5 dark:border-white/10 shadow-lg shadow-black/5 dark:shadow-black/20">
+              {dictTables.map((tName) => (
+                <button
+                  key={`dnav-${tName}`}
+                  onClick={() => document.getElementById(`dict-table-${tName}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                  className="px-4 py-1.5 rounded-full border border-black/5 dark:border-white/5 hover:bg-[#0059B5]/10 dark:hover:bg-[#60A5FA]/10 hover:text-[#0059B5] dark:hover:text-[#60A5FA] hover:border-[#0059B5]/20 dark:hover:border-[#60A5FA]/20 text-sm font-medium transition-all cursor-pointer text-neutral-600 dark:text-neutral-300"
+                >
+                  {tName}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="mb-6 flex">
            <input 
              value={dictSearch} 
@@ -604,11 +1035,11 @@ function DataView({ activeTab, analysisData, processedRowLimit }: { activeTab: s
         </div>
         <div className="space-y-6">
           {dictionary.length === 0 && <GlassCard className="p-8 text-center text-neutral-400">Dictionary not generated.</GlassCard>}
-          {Array.from(new Set(dictionary.map((r:any) => r.table))).map(tableName => {
+          {dictTables.map(tableName => {
              const rows = dictionary.filter((r:any) => r.table === tableName && (String(r.column).toLowerCase().includes(dictSearch.toLowerCase()) || String(r.table).toLowerCase().includes(dictSearch.toLowerCase())));
              if (rows.length === 0) return null;
              return (
-               <GlassCard key={String(tableName)} className="overflow-hidden">
+               <GlassCard key={String(tableName)} id={`dict-table-${tableName}`} className="overflow-hidden scroll-mt-44">
                  <div className="bg-black/5 dark:bg-white/5 backdrop-blur-md px-6 py-4 border-b border-black/5 dark:border-white/5 flex items-center gap-3">
                    <div className="p-2 rounded-lg bg-white dark:bg-black shadow-sm border border-black/5 dark:border-white/5">
                       <ListTree className="w-5 h-5 text-[#0059B5] dark:text-[#60A5FA]" />
@@ -686,6 +1117,61 @@ function DataView({ activeTab, analysisData, processedRowLimit }: { activeTab: s
        anchor.click();
     };
 
+    const downloadDictionaryCsv = () => {
+      const rows = Array.isArray(analysisData?.data_dict) ? analysisData.data_dict : [];
+      if (rows.length === 0) {
+        alert('No data dictionary available to export.');
+        return;
+      }
+      const headers: string[] = Array.from(new Set(rows.flatMap((row: Record<string, unknown>) => Object.keys(row).map(String))));
+      const escapeCsv = (value: unknown) => {
+        const text = String(value ?? '');
+        if (/[",\n]/.test(text)) {
+          return `"${text.replace(/"/g, '""')}"`;
+        }
+        return text;
+      };
+      const csv = [
+        headers.join(','),
+        ...rows.map((row: Record<string, unknown>) => headers.map((header) => escapeCsv(row[header])).join(',')),
+      ].join('\n');
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = 'nexus_data_dictionary.csv';
+      anchor.click();
+      URL.revokeObjectURL(url);
+    };
+
+    const downloadErSvgFromMermaid = async () => {
+      const mermaidCode = String(analysisData?.er_diagram || '').trim();
+      if (!mermaidCode) {
+        alert('No ER diagram is available for export.');
+        return;
+      }
+      try {
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: 'base',
+          securityLevel: 'loose',
+        });
+        const renderId = `nexus-export-${Date.now()}`;
+        const rendered = await mermaid.render(renderId, mermaidCode);
+        const blob = new Blob([rendered.svg], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = 'nexus_er_diagram.svg';
+        anchor.click();
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        console.error('Failed to export ER SVG', error);
+        alert('Could not export ER SVG. Please open ER Diagram tab once and try again.');
+      }
+    };
+
     return (
       <div className="animate-in fade-in duration-700 w-full mt-24">
         <h2 className="text-4xl font-light tracking-tight text-neutral-900 dark:text-white mb-8">Export <span className="font-medium text-[#0059B5]">Package</span></h2>
@@ -708,7 +1194,7 @@ function DataView({ activeTab, analysisData, processedRowLimit }: { activeTab: s
              <div className="flex-1 text-left">
                 <h3 className="text-xl font-medium text-neutral-900 dark:text-white mb-2">Data Dictionary (CSV)</h3>
                 <p className="text-neutral-500 text-sm font-light mb-6">Spreadsheet-ready schema attributes, AI definitions, and semantic roles.</p>
-                <button onClick={() => alert("CSV Export coming soon!")} className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 px-6 py-2.5 rounded-full text-sm font-medium transition-colors border border-emerald-500/20">Download .csv</button>
+                <button onClick={downloadDictionaryCsv} className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 px-6 py-2.5 rounded-full text-sm font-medium transition-colors border border-emerald-500/20">Download .csv</button>
              </div>
           </GlassCard>
 
@@ -730,7 +1216,7 @@ function DataView({ activeTab, analysisData, processedRowLimit }: { activeTab: s
              <div className="flex-1 text-left">
                 <h3 className="text-xl font-medium text-neutral-900 dark:text-white mb-2">Architectural ERD (SVG)</h3>
                 <p className="text-neutral-500 text-sm font-light mb-6">High-resolution vector graphic of the inferred entity relationship layout.</p>
-                <button onClick={() => alert("SVG Vector Export Coming Soon!")} className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-700 dark:text-rose-400 px-6 py-2.5 rounded-full text-sm font-medium transition-colors border border-rose-500/20">Download .svg</button>
+                <button onClick={() => void downloadErSvgFromMermaid()} className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-700 dark:text-rose-400 px-6 py-2.5 rounded-full text-sm font-medium transition-colors border border-rose-500/20">Download .svg</button>
              </div>
           </GlassCard>
         </div>
@@ -764,6 +1250,69 @@ function DataView({ activeTab, analysisData, processedRowLimit }: { activeTab: s
                 className="w-full h-24 p-5 bg-white/50 dark:bg-black/20 border border-black/5 dark:border-white/10 rounded-2xl focus:outline-none focus:ring-1 focus:ring-purple-500 resize-none font-light text-sm shadow-inner dark:text-neutral-200"
                 placeholder="Ask the AI agent..."
               />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                <select
+                  value={aiProvider}
+                  onChange={(e) => setAiProvider(e.target.value === 'ollama' ? 'ollama' : 'gemini')}
+                  className="w-full px-4 py-2.5 rounded-xl bg-white/50 dark:bg-black/20 border border-black/5 dark:border-white/10 text-sm"
+                >
+                  <option value="gemini">Gemini (API)</option>
+                  <option value="ollama">Ollama (Local)</option>
+                </select>
+
+                {aiProvider === 'gemini' ? (
+                  <input
+                    value={aiGeminiModel}
+                    onChange={(e) => setAiGeminiModel(e.target.value)}
+                    placeholder="Gemini model"
+                    className="w-full px-4 py-2.5 rounded-xl bg-white/50 dark:bg-black/20 border border-black/5 dark:border-white/10 text-sm"
+                  />
+                ) : (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => refreshAiOllamaModels(aiOllamaEndpoint)}
+                      className="px-3 py-2.5 rounded-xl bg-black/5 dark:bg-white/10 border border-black/10 dark:border-white/10 text-sm"
+                    >
+                      {aiModelLoading ? 'Refreshing...' : 'Refresh Ollama Models'}
+                    </button>
+                    <input
+                      value={aiOllamaEndpoint}
+                      onChange={(e) => setAiOllamaEndpoint(e.target.value)}
+                      placeholder="Ollama endpoint"
+                      className="flex-1 px-4 py-2.5 rounded-xl bg-white/50 dark:bg-black/20 border border-black/5 dark:border-white/10 text-sm"
+                    />
+                  </div>
+                )}
+              </div>
+              {aiProvider === 'gemini' ? (
+                <input
+                  value={aiGeminiApiKey}
+                  onChange={(e) => setAiGeminiApiKey(e.target.value)}
+                  type="password"
+                  placeholder="Gemini API key (optional if configured in backend secrets)"
+                  className="w-full mt-3 px-4 py-2.5 rounded-xl bg-white/50 dark:bg-black/20 border border-black/5 dark:border-white/10 text-sm"
+                />
+              ) : (
+                aiOllamaModels.length > 0 ? (
+                  <select
+                    value={aiOllamaModel}
+                    onChange={(e) => setAiOllamaModel(e.target.value)}
+                    className="w-full mt-3 px-4 py-2.5 rounded-xl bg-white/50 dark:bg-black/20 border border-black/5 dark:border-white/10 text-sm"
+                  >
+                    {aiOllamaModels.map((model) => (
+                      <option key={model} value={model}>{model}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    value={aiOllamaModel}
+                    onChange={(e) => setAiOllamaModel(e.target.value)}
+                    placeholder="Ollama model"
+                    className="w-full mt-3 px-4 py-2.5 rounded-xl bg-white/50 dark:bg-black/20 border border-black/5 dark:border-white/10 text-sm"
+                  />
+                )
+              )}
               <div className="flex justify-between mt-4">
                  <button onClick={() => window.print()} className="px-6 py-2.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 rounded-full font-medium text-sm transition-colors border border-black/5 flex items-center gap-2 cursor-pointer hover:bg-neutral-200 dark:hover:bg-neutral-700">
                     <Download className="w-4 h-4" /> Download PDF Report
@@ -772,9 +1321,17 @@ function DataView({ activeTab, analysisData, processedRowLimit }: { activeTab: s
                     <BrainCircuit className="w-4 h-4" /> {isGeneratingAi ? "Generating..." : "Generate Analyst Brief"}
                  </button>
               </div>
+              {aiError && (
+                <div className="mt-3 text-sm text-rose-600 dark:text-rose-400">{aiError}</div>
+              )}
+              {aiOrchestration && (
+                <div className="mt-3 text-xs text-neutral-500 dark:text-neutral-400">
+                  Provider: {String(aiOrchestration.provider_used || 'unknown')} | Status: {String(aiOrchestration.status || 'unknown')}
+                </div>
+              )}
             </div>
             <div className="prose prose-neutral dark:prose-invert max-w-none text-base font-light leading-relaxed whitespace-pre-wrap border-t border-black/5 dark:border-white/5 pt-8 relative z-0">
-              <div dangerouslySetInnerHTML={{ __html: (aiResponse || analysisData.ai_brief).replace(/### (.*?)\n/g, '<h3 class="text-xl font-medium text-purple-600 dark:text-purple-400 mb-2 mt-4">$1</h3>').replace(/\*\*(.*?)\*\*/g, '<strong class="font-medium text-neutral-900 dark:text-white">$1</strong>').replace(/`([^`]+)`/g, '<code class="bg-black/5 dark:bg-white/10 px-1.5 py-0.5 rounded text-sm font-mono text-purple-600 dark:text-purple-300">$1</code>') }} />
+              <div dangerouslySetInnerHTML={{ __html: formatAiBriefToHtml(aiResponse || analysisData.ai_brief || '') }} />
             </div>
           </GlassCard>
         ) : (

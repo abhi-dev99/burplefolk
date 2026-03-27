@@ -1,9 +1,10 @@
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
 
 from .schema import classify_values, hashable_series, semantic_label
+from .semantic import resolve_semantic_role
 
 
 def _compute_temporal_adjustment(series: pd.Series, expected_gap_days: Optional[float] = None) -> Dict:
@@ -64,6 +65,7 @@ def profile_table(
     total_rows: int,
     pk_candidates: List[str],
     expected_cadence_days: Optional[float] = None,
+    semantic_model: Optional[Dict[str, Any]] = None,
 ) -> Dict:
     col_profiles: List[Dict] = []
     issues: List[str] = []
@@ -82,11 +84,17 @@ def profile_table(
         type_distribution = classify_values(series)
         dominant_type = max(type_distribution, key=type_distribution.get)
         type_consistency = type_distribution[dominant_type]
-        semantic = semantic_label(col)
+        semantic = semantic_label(col, table_name=table_name, semantic_model=semantic_model)
+        semantic_details = resolve_semantic_role(
+            table_name=table_name,
+            column_name=col,
+            sample_dtype=str(series.dtype),
+            config=semantic_model or {},
+        )
 
         if null_ratio > 35:
             issues.append(f"{table_name}.{col} has high missingness ({null_ratio:.1f}%).")
-        if semantic == "identifier" and unique_ratio < 70:
+        if semantic in {"identifier", "business_key", "foreign_key"} and unique_ratio < 70:
             issues.append(f"{table_name}.{col} appears identifier-like but has low uniqueness ({unique_ratio:.1f}%).")
 
         temporal_expected_gap_days = None
@@ -127,6 +135,13 @@ def profile_table(
                 "column": col,
                 "sample_dtype": str(series.dtype),
                 "semantic_role": semantic,
+                "semantic_confidence": round(float(semantic_details.get("confidence", 0.0)), 3),
+                "semantic_source": str(semantic_details.get("source", "heuristic")),
+                "canonical_name": str(semantic_details.get("canonical_name", col)),
+                "business_term": str(semantic_details.get("business_term", col)),
+                "semantic_entity": str(semantic_details.get("entity", "unknown")),
+                "semantic_explanation": str(semantic_details.get("explanation", "")),
+                "semantic_candidates": semantic_details.get("candidates", []),
                 "null_percent": round(null_ratio, 2),
                 "unique_percent": round(unique_ratio, 2),
                 "dominant_value_type": dominant_type,
@@ -216,6 +231,11 @@ def build_dictionary(table_profiles: List[Dict]) -> pd.DataFrame:
                     "column": cp["column"],
                     "data_type": cp["sample_dtype"],
                     "role": cp["semantic_role"],
+                    "role_confidence": cp.get("semantic_confidence"),
+                    "canonical_name": cp.get("canonical_name", cp["column"]),
+                    "business_term": cp.get("business_term", cp["column"]),
+                    "semantic_entity": cp.get("semantic_entity", "unknown"),
+                    "semantic_source": cp.get("semantic_source", "heuristic"),
                     "is_primary_candidate": cp["column"] in pks,
                     "null_percent": cp["null_percent"],
                     "unique_percent": cp["unique_percent"],

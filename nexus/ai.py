@@ -65,6 +65,17 @@ def _candidate_gemini_models(selected_model: str, api_key: str, timeout_seconds:
     if not available:
         return [selected_model]
 
+    def _is_generation_capable(model_name: str) -> bool:
+        normalized = str(model_name or "").strip().lower()
+        if not normalized.startswith("gemini"):
+            return False
+        blocked_tokens = ["aqa", "deep-research", "embedding", "vision", "tts", "transcribe"]
+        return not any(token in normalized for token in blocked_tokens)
+
+    available = [model for model in available if _is_generation_capable(model)]
+    if not available:
+        return [selected_model]
+
     # Prefer broadly compatible generateContent models first.
     preferred = [selected_model, "gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-1.5-pro", "gemini-2.0-flash"]
     ordered: List[str] = []
@@ -90,7 +101,7 @@ def ollama_get_models(endpoint: str, api_key: str = "", timeout_seconds: int = 8
         return []
 
 
-def _build_ai_brief_prompt(analysis: Dict) -> str:
+def _build_ai_brief_prompt(analysis: Dict, additional_instructions: str = "") -> str:
     table_profiles = analysis.get("table_profiles", []) if isinstance(analysis.get("table_profiles"), list) else []
     relationships = analysis.get("relationships", []) if isinstance(analysis.get("relationships"), list) else []
 
@@ -139,6 +150,16 @@ def _build_ai_brief_prompt(analysis: Dict) -> str:
             f"(confidence={rel.get('confidence', 'n/a')})"
         )
 
+    user_instruction_block = ""
+    trimmed_instructions = (additional_instructions or "").strip()
+    if trimmed_instructions:
+        user_instruction_block = f"""
+
+Additional user instructions:
+- Follow these instructions unless they conflict with evidence-grounding rules:
+{trimmed_instructions}
+"""
+
     return f"""
 You are a principal data architect and data platform reviewer preparing a board-ready technical assessment.
 
@@ -184,6 +205,73 @@ Style expectations:
 - Enterprise-grade, concise but deep.
 - Use short paragraphs, bullet lists, and mini tables where useful.
 - Avoid motivational phrasing; focus on technically rigorous recommendations.
+{user_instruction_block}
+"""
+
+
+def _build_ai_brief_prompt_compact(analysis: Dict, additional_instructions: str = "") -> str:
+    table_profiles = analysis.get("table_profiles", []) if isinstance(analysis.get("table_profiles"), list) else []
+    relationships = analysis.get("relationships", []) if isinstance(analysis.get("relationships"), list) else []
+    source_type = analysis.get("source_type", "Unknown")
+    avg_quality = analysis.get("avg_quality_score", 0)
+
+    top_risk_tables = sorted(
+        table_profiles,
+        key=lambda x: float(x.get("quality_score", 0) or 0),
+    )[:4]
+
+    relationship_examples = []
+    for rel in relationships[:8]:
+        relationship_examples.append(
+            f"- {rel.get('child_table', '?')}.{rel.get('child_column', '?')} -> "
+            f"{rel.get('parent_table', '?')}.{rel.get('parent_column', '?')} "
+            f"(confidence={rel.get('confidence', 'n/a')})"
+        )
+
+    risk_table_lines = []
+    for item in top_risk_tables:
+        risk_table_lines.append(
+            f"- {item.get('table', 'unknown')}: quality={item.get('quality_score', 0)}, "
+            f"issues={len(item.get('issues', []) if isinstance(item.get('issues'), list) else [])}"
+        )
+
+    user_instruction_block = ""
+    trimmed_instructions = (additional_instructions or "").strip()
+    if trimmed_instructions:
+        user_instruction_block = f"""
+
+Additional instructions:
+{trimmed_instructions}
+"""
+
+    return f"""
+You are a senior data platform reviewer. Produce a concise but technical executive brief.
+
+Context:
+- Source type: {source_type}
+- Tables analyzed: {len(table_profiles)}
+- Relationships inferred: {len(relationships)}
+- Average quality score: {avg_quality}
+
+Top risk tables:
+{chr(10).join(risk_table_lines) if risk_table_lines else '- None'}
+
+Sample relationships:
+{chr(10).join(relationship_examples) if relationship_examples else '- None'}
+
+Output markdown sections (exact headings):
+1) Executive Summary
+2) Key Technical Findings
+3) Risk Register
+4) 48-Hour Remediation Plan
+5) 30-Day Hardening Plan
+6) KPI Delta Forecast
+
+Rules:
+- Ground claims in provided metrics.
+- Keep output under 900 words.
+- Use bullets and short tables where useful.
+{user_instruction_block}
 """
 
 
@@ -242,40 +330,90 @@ def _generate_ollama_brief(
     endpoint: str,
     timeout_seconds: int = 120,
     api_key: str = "",
+    additional_instructions: str = "",
 ) -> str:
-    prompt = _build_ai_brief_prompt(analysis)
+    prompt = _build_ai_brief_prompt_compact(analysis, additional_instructions=additional_instructions)
 
-    url = endpoint.rstrip("/") + "/api/generate"
-    payload = {
-        "model": model,
-        "prompt": prompt,
-        "stream": False,
-        "options": {"temperature": 0.2},
-    }
+    def _attempt_generate(model_name: str, timeout_s: int) -> str:
+        url = endpoint.rstrip("/") + "/api/generate"
+        payload = {
+            "model": model_name,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": 0.2,
+                "num_predict": 650,
+                "top_p": 0.9,
+            },
+        }
+        response = requests.post(url, json=payload, timeout=timeout_s, headers=_ollama_headers(api_key))
+        if response.status_code == 404:
+            installed = ollama_get_models(endpoint, api_key=api_key)
+            installed_txt = ", ".join(installed) if installed else "none detected"
+            raise RuntimeError(
+                f"Model '{model_name}' not found in Ollama. Installed models: {installed_txt}. "
+                "Pull a model with: ollama pull <model_name>."
+            )
+        response.raise_for_status()
+        text = response.json().get("response", "").strip()
+        if not text:
+            raise RuntimeError("Ollama returned an empty response.")
+        return text
+
     try:
-        response = requests.post(url, json=payload, timeout=timeout_seconds, headers=_ollama_headers(api_key))
+        return _attempt_generate(model, timeout_seconds)
     except requests.Timeout as exc:
+        installed = ollama_get_models(endpoint, api_key=api_key)
+        if not installed:
+            raise RuntimeError(
+                f"Ollama request timed out after {timeout_seconds}s. Increase timeout or use a lighter model."
+            ) from exc
+
+        preferred_light_models = [
+            "llama3.2:1b",
+            "llama3.2:3b",
+            "phi3:mini",
+            "qwen2.5:3b",
+            "mistral:7b",
+            "llama3:latest",
+        ]
+        candidates: List[str] = []
+        for preferred in preferred_light_models:
+            for installed_model in installed:
+                if installed_model == model:
+                    continue
+                if installed_model.lower() == preferred.lower() or preferred.lower() in installed_model.lower():
+                    if installed_model not in candidates:
+                        candidates.append(installed_model)
+        for installed_model in installed:
+            if installed_model != model and installed_model not in candidates:
+                candidates.append(installed_model)
+
+        retry_errors: List[str] = []
+        retry_timeout = max(60, min(timeout_seconds, 180))
+        for candidate in candidates[:3]:
+            try:
+                return _attempt_generate(candidate, retry_timeout)
+            except Exception as retry_exc:
+                retry_errors.append(f"{candidate}: {retry_exc}")
+
+        detail = "; ".join(retry_errors) if retry_errors else "no alternate model retry was possible"
         raise RuntimeError(
-            f"Ollama request timed out after {timeout_seconds}s. Increase timeout or use a lighter model."
+            f"Ollama request timed out after {timeout_seconds}s and retries failed. {detail}"
         ) from exc
 
-    if response.status_code == 404:
-        installed = ollama_get_models(endpoint, api_key=api_key)
-        installed_txt = ", ".join(installed) if installed else "none detected"
-        raise RuntimeError(
-            f"Model '{model}' not found in Ollama. Installed models: {installed_txt}. "
-            "Pull a model with: ollama pull <model_name>."
-        )
 
-    response.raise_for_status()
-    return response.json().get("response", "").strip()
-
-
-def _generate_gemini_brief(analysis: Dict, model: str, api_key: str, timeout_seconds: int = 90) -> str:
+def _generate_gemini_brief(
+    analysis: Dict,
+    model: str,
+    api_key: str,
+    timeout_seconds: int = 90,
+    additional_instructions: str = "",
+) -> str:
     if not api_key.strip():
         raise RuntimeError("Gemini API key is required for Gemini provider.")
 
-    prompt = _build_ai_brief_prompt(analysis)
+    prompt = _build_ai_brief_prompt(analysis, additional_instructions=additional_instructions)
     selected_model = _normalize_gemini_model(model)
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
@@ -376,16 +514,24 @@ def generate_ai_brief(
     api_key: str = "",
     ollama_api_key: str = "",
     timeout_seconds: int = 120,
+    additional_instructions: str = "",
 ) -> str:
     selected_provider = (provider or "ollama").strip().lower()
     if selected_provider == "gemini":
-        return _generate_gemini_brief(analysis, model=model, api_key=api_key, timeout_seconds=timeout_seconds)
+        return _generate_gemini_brief(
+            analysis,
+            model=model,
+            api_key=api_key,
+            timeout_seconds=timeout_seconds,
+            additional_instructions=additional_instructions,
+        )
     return _generate_ollama_brief(
         analysis,
         model=model,
         endpoint=endpoint,
         timeout_seconds=timeout_seconds,
         api_key=ollama_api_key,
+        additional_instructions=additional_instructions,
     )
 
 

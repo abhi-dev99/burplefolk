@@ -1,0 +1,657 @@
+================================================================================
+NEXUS INTELLIGENCE - COMPREHENSIVE LIMITATIONS FIX PLAN
+Hackathon Priority Roadmap (Complexity-Ordered, Easiest First)
+================================================================================
+
+SCORING SYSTEM:
+  [1] = 30 mins - 1 hour (trivial code changes)
+  [2] = 1-2 hours (single file edits, simple logic)
+  [3] = 2-4 hours (multiple files, moderate refactoring)
+  [4] = 4-8 hours (cross-module changes, testing required)
+  [5] = 8+ hours (major architectural rework, new dependencies)
+
+IMPACT LEGEND:
+  🔴 CRITICAL (blocks deployment or MVP)
+  🟠 HIGH (significant feature gaps)
+  🟡 MEDIUM (nice-to-have, improves UX)
+  🟢 LOW (polish/nice-to-have)
+
+================================================================================
+PHASE 1: LOW-HANGING FRUIT (Total: ~6 hours)
+================================================================================
+
+[1] 🔴 FIX: Silent AI Layer Failures (Ollama Timeout Handling)
+────────────────────────────────────────────────────────────
+PROBLEM:
+  - If Ollama endpoint unreachable, analysis silently skips AI layer
+  - User gets result but doesn't know briefs/hints were never generated
+  - No error message or retry logic
+
+LOCATION: nexus/analysis.py (lines 96-103), nexus/ai.py
+
+SOLUTION:
+  1. Wrap Ollama calls in try-except with informative error messages
+  2. Return `erd_fallback_note` explaining why AI was skipped
+  3. Display banner in UI when AI features unavailable
+  4. Add timeout parameter (default 10s) to Ollama requests
+
+FILES TO CHANGE:
+  - nexus/ai.py: Add timeout to ollama_get_models() + process_ollama_request()
+  - nexus/analysis.py: Enhance exception handling with clear messages
+  - app.py: Display warning banner if AI unavailable
+
+HACKATHON WIN:
+  Users get clear feedback instead of mystery missing features
+
+---
+
+[1] 🔴 FIX: Max File Upload Size UX Clarity
+────────────────────────────────────────────
+PROBLEM:
+  - Streamlit's 200 MB limit is undocumented in UI
+  - Users upload large files and get cryptic error
+  - No pre-check or warning
+
+LOCATION: app.py (line 854-856)
+
+SOLUTION:
+  1. Add file size validation before upload
+  2. Display pre-upload warning: "Max 200 MB per file (Streamlit limit)"
+  3. Show estimated max rows for profile limit
+
+FILES TO CHANGE:
+  - app.py: Add st.warning() near file_uploader widgets
+  - app.py: Add file size check after upload, reject if >200MB
+
+HACKATHON WIN:
+  Professional error handling, no cryptic failures
+
+---
+
+[2] 🟠 FIX: Add Custom Data Quality Rules (UI + Backend)
+────────────────────────────────────────────────────────
+PROBLEM:
+  - Only built-in rules (nulls, duplicates, consistency)
+  - No way to define custom thresholds or rules
+  - Quality formula hardcoded: 50% completeness + 50% consistency
+
+LOCATION: nexus/profiling.py (lines 120-180)
+
+SOLUTION:
+  1. Create RuleConfig dataclass with: rule_name, column_pattern, check_type, threshold
+  2. Add "Define Custom Rules" section in app.py sidebar
+  3. Store rules in `quality_rules.json` (user-editable)
+  4. Load + apply rules during profile_table() execution
+  5. Add rule results to table_profiles output
+
+FILES TO CHANGE:
+  - nexus/models.py: Add RuleConfig dataclass
+  - nexus/profiling.py: Add apply_custom_rules() function
+  - app.py: Add UI for rule editing (checkbox matrix for common rules)
+  - app.py: Load rules from file before analysis
+
+EXAMPLE RULES (pre-populated):
+  - Column 'amount' must be > 0
+  - Column 'email' must match regex ^[\w\.-]+@[\w\.-]+\.\w+$
+  - Column 'status' must be in (pending, approved, rejected)
+  - Null ratio must be < 10% for identifier columns
+
+HACKATHON WIN:
+  Shows domain expertise + customization story for judges
+
+---
+
+[2] 🟠 FIX: Add Stratified Sampling (Not Just LIMIT)
+─────────────────────────────────────────────────────
+PROBLEM:
+  - Currently: SELECT * FROM table LIMIT N (first N rows only)
+  - Biases results if data is sorted/partitioned
+  - Temporal data shows only oldest records
+
+LOCATION: nexus/ingestion.py (lines 47-50, csv_ingest)
+
+SOLUTION:
+  1. For CSV: Use pandas.DataFrame.sample(frac=0.1, random_state=42) with stratification
+  2. For SQLite: Use ORDER BY RANDOM() LIMIT N instead of sequential LIMIT
+  3. For DB connections: Add sampling strategy parameter (RANDOM, STRATIFIED, RECENT)
+  4. Keep profile_row_limit as target sample size, not hard limit
+
+FILES TO CHANGE:
+  - nexus/ingestion.py: csv_ingest(), sqlite_ingest(), database_ingest()
+  - app.py: Add "Sampling Strategy" dropdown (RANDOM / SEQUENTIAL / RECENT)
+
+HACKATHON WIN:
+  Better data representation = more accurate quality scores
+
+---
+
+[2] 🟡 FIX: Add Sensitive Data Detection (PII Masking)
+──────────────────────────────────────────────────────
+PROBLEM:
+  - No detection of SSN, credit card, email, phone
+  - Results exported with all PII visible
+  - GDPR/compliance nightmare
+
+LOCATION: nexus/schema.py (semantic_label function)
+
+SOLUTION:
+  1. Extend semantic_label() with regex patterns for: email, phone, SSN, credit card
+  2. Add `is_sensitive` flag to column profiles
+  3. In exports (JSON/CSV), replace sensitive values with [REDACTED]
+  4. Add warning banner in UI if sensitive data detected
+
+FILES TO CHANGE:
+  - nexus/schema.py: Add PII detection patterns
+  - nexus/profiling.py: Mark columns with is_sensitive=True
+  - nexus/reporting.py: Redact sensitive values in PDF export
+  - app.py: Display "⚠️ Sensitive data detected in X columns" warning
+
+HACKATHON WIN:
+  Judges see you thinking about real enterprise concerns (GDPR/HIPAA)
+
+---
+
+[2] 🟢 FIX: Add Query Result Caching (Avoid Re-scanning)
+───────────────────────────────────────────────────────
+PROBLEM:
+  - Re-running same analysis re-scans entire dataset
+  - No caching of profiles or relationships
+  - Wasted time for demo purposes
+
+LOCATION: api.py (_LATEST_TABLES dict)
+
+SOLUTION:
+  1. Create `AnalysisCache` class with keys: (source_type, file_hash, profile_limit, temporal_cadence)
+  2. Before analysis, compute MD5(source) and check cache
+  3. Store results in `cache/` directory with TTL (expires after 1 hour)
+  4. Add "Use Cached Results" checkbox in UI
+  5. Display cache hit/miss status in progress bar
+
+FILES TO CHANGE:
+  - nexus/cache.py: New file with AnalysisCache class
+  - api.py: Check cache before run_analysis()
+  - app.py: Add cache control UI
+
+HACKATHON WIN:
+  Demo runs 10x faster, impresses with performance
+
+---
+
+===============================================================================
+PHASE 2: MEDIUM-EFFORT WINS (Total: ~12 hours)
+===============================================================================
+
+[3] 🔴 FIX: User Isolation + Basic Auth (Critical for Multi-User)
+─────────────────────────────────────────────────────────────────
+PROBLEM:
+  - No user isolation (all users see same session state)
+  - No authentication checks in React UI
+  - Race conditions in _LATEST_TABLES
+
+LOCATION: app.py (st.session_state), api.py (no auth middleware)
+
+SOLUTION:
+  1. Add FastAPI middleware to validate Bearer token (JWT from Firebase)
+  2. Create user_id from token and namespace all storage: outputs/{user_id}/{analysis_id}/
+  3. In Streamlit: Add user login gate (Firebase or simple email)
+  4. In React: Store JWT in localStorage, send in Authorization header
+  5. Update _LATEST_TABLES to be per-user: _USER_TABLES[user_id] = {...}
+
+FILES TO CHANGE:
+  - api.py: Add @app.middleware for JWT validation
+  - api.py: Update OUTPUT_DIR to outputs/{user_id}/{timestamp}/
+  - api.py: Update _set_latest_tables() to use user_id
+  - app.py: Add Firebase login gate at top of main()
+  - nexus-ui/src/App.tsx: Add JWT token management, auth header in axios
+
+HACKATHON WIN:
+  Shows production-ready thinking: "multi-tenant from day 1"
+
+---
+
+[3] 🔴 FIX: Add Rate Limiting (Prevent Abuse)
+──────────────────────────────────────────────
+PROBLEM:
+  - No rate limits on API endpoints
+  - User can spam 1000 analysis requests
+  - Can exhaust Ollama/Gemini API quota
+
+LOCATION: api.py (all POST endpoints)
+
+SOLUTION:
+  1. Install slowapi: `pip install slowapi`
+  2. Add rate limiter: 10 req/min per IP for /analyze endpoints, 100 req/min for agent endpoints
+  3. Return 429 (Too Many Requests) with wait time
+  4. In React UI: Show "Rate limit reached. Wait 5 minutes." message
+
+FILES TO CHANGE:
+  - requirements.txt: Add slowapi
+  - api.py: Import limiter, decorate endpoints with @limiter.limit("10/minute")
+
+HACKATHON WIN:
+  DDoS-proof = judges nod approvingly
+
+---
+
+[3] 🔴 FIX: Add Input Validation (SQL Injection Prevention)
+──────────────────────────────────────────────────────────
+PROBLEM:
+  - DB connection params built with quote_plus() but not fully validated
+  - If validation removed later, SQL injection possible
+  - No hostname/port range checks
+
+LOCATION: nexus/ingestion.py (build_db_url function)
+
+SOLUTION:
+  1. Add DBConnectionConfig validation in models.py:
+     - host: match regex ^[\w\.-]+(:\d+)?$ or valid IP
+     - port: 1-65535 range
+     - database: only alphanumeric + underscore
+     - driver: whitelist of ODBC drivers (in production)
+  2. Raise ValueError if validation fails
+  3. Add assertions in Unit tests
+
+FILES TO CHANGE:
+  - nexus/models.py: Add __post_init__ validator to DBConnectionConfig
+  - api.py: Wrap /api/analyze/db in try-except for ValueError
+  - tests/test_validation.py: New file with validation unit tests
+
+HACKATHON WIN:
+  Security-conscious code = enterprise credibility
+
+---
+
+[3] 🟠 FIX: Many-to-Many Relationship Detection
+────────────────────────────────────────────────
+PROBLEM:
+  - Only detects many-to-one (FK → PK)
+  - Misses junction tables (OrderLineItems, StudentCourses)
+  - Users manually add these relationships
+
+LOCATION: nexus/schema.py (infer_foreign_keys function)
+
+SOLUTION:
+  1. After inferring FKs, detect multi-column keys (composite keys)
+  2. For tables with 2 FKs and small row count: candidate M2M junction table
+  3. Check if rows are distinct pairs of FKs (not duplicates)
+  4. Mark as "many-to-many" in relationship type
+  5. In ER diagram, render differently (double line or dashed)
+
+FILES TO CHANGE:
+  - nexus/schema.py: Add detect_many_to_many() function
+  - nexus/schema.py: Call after infer_foreign_keys()
+  - nexus/visualization.py: Render M2M relationships visually different
+
+HACKATHON WIN:
+  Better schema understanding = judges impressed
+
+---
+
+[3] 🟠 FIX: Add PostgreSQL Native Sampling (TABLESAMPLE)
+─────────────────────────────────────────────────────────
+PROBLEM:
+  - Large PostgreSQL tables load entire table into memory
+  - No LIMIT applied server-side for OFFSET/LIMIT profiling
+  - Slow for billion-row datasets
+
+LOCATION: nexus/ingestion.py (database_ingest)
+
+SOLUTION:
+  1. Add check for PostgreSQL: if table > 1M rows, use TABLESAMPLE BERNOULLI
+  2. For MySQL: Use ORDER BY RAND() LIMIT instead of LIMIT (already doing this)
+  3. For SQL Server: Use TABLESAMPLE (N ROWS)
+  4. Log sampling method used in analysis output
+
+FILES TO CHANGE:
+  - nexus/ingestion.py: database_ingest() - add db_type checks for sampling
+  - nexus/models.py: Add sampling_method field to analysis result
+
+HACKATHON WIN:
+  Shows DB-specific optimization knowledge
+
+---
+
+[3] 🟡 FIX: Add Data Dictionary Export Formats (Excel + CSV)
+───────────────────────────────────────────────────────────
+PROBLEM:
+  - Only exports as JSON or internal format
+  - No Excel (most users want this)
+  - No customizable column selection
+
+LOCATION: app.py (export logic in download buttons)
+
+SOLUTION:
+  1. Install openpyxl: `pip install openpyxl`
+  2. Add Excel export: styled header row, frozen panes, column widths
+  3. Add CSV export: UTF-8 with proper escaping
+  4. Add filter checkboxes for export: [✓] Names [✓] Data Types [ ] Samples
+  5. Create button: "Download Dictionary As: [PDF▼ Excel▼ CSV▼]"
+
+FILES TO CHANGE:
+  - requirements.txt: Add openpyxl
+  - app.py: Add export format selection UI
+  - nexus/reporting.py: Add to_excel() and to_csv() functions
+  - app.py: Update download button logic to use selected format
+
+HACKATHON WIN:
+  Real users care about Excel = practical polish
+
+---
+
+[3] 🟡 FIX: Add Temporal Analysis Improvements (Customize Cadence)
+──────────────────────────────────────────────────────────────────
+PROBLEM:
+  - Temporal adjustment only works if user knows to set expected_cadence_days
+  - UI slider is hidden, not obvious
+  - No validation that column is actually temporal
+
+LOCATION: app.py (line 849), nexus/profiling.py
+
+SOLUTION:
+  1. Auto-detect temporal columns (column name contains 'date', 'time', 'ts')
+  2. Add "Infer Temporal Cadence" checkbox + button
+  3. If checked, analyze time gaps and suggest expected cadence
+  4. Display: "Detected daily cadence. Last update was 3 days ago (irregular!)"
+  5. Show temporal adjustment points in UI scoring card
+
+FILES TO CHANGE:
+  - nexus/schema.py: Add is_likely_temporal() function
+  - app.py: Add temporal detection UI section
+  - app.py: Display temporal cadence analysis results
+
+HACKATHON WIN:
+  Sophisticated data quality = judges see deep thinking
+
+---
+
+===============================================================================
+PHASE 3: HIGH-IMPACT FEATURES (Total: ~16 hours)
+===============================================================================
+
+[4] 🔴 FIX: Database Backend for Persistence (Replace JSON Files)
+──────────────────────────────────────────────────────────────────
+PROBLEM:
+  - All data in files/memory (not scalable)
+  - No result versioning or recovery
+  - Audit ledger loaded entirely at startup (O(n))
+  - No concurrent access control
+
+LOCATION: All of api.py, app.py, nexus/audit.py
+
+SOLUTION:
+  1. Add SQLite database: `nexus.db` with schema:
+     - analyses (id, user_id, created_at, source_type, status, result_json)
+     - audit_ledger (id, analysis_id, timestamp, actor, tables_count, relationships_count, hash)
+     - user_profiles (user_id, email, created_at)
+  2. Create migrations: Initial schema setup
+  3. Replace file I/O with database queries
+  4. Add query methods: get_analysis_by_id(), list_user_analyses(), get_audit_trail()
+  5. For API: Use SQLAlchemy ORM with connection pooling
+
+FILES TO CHANGE:
+  - nexus/db.py: New file - database connection, session management
+  - nexus/models.py: Add SQLAlchemy models (AnalysisModel, AuditModel)
+  - nexus/audit.py: Replace JSON file operations with DB queries
+  - api.py: Update endpoints to use DB instead of file I/O
+  - nexus_cli.py: Update to save to DB instead of outputs/ folder
+
+HACKATHON WIN:
+  "We're production-ready with a real database" = biggest announcement
+
+---
+
+[4] 🟠 FIX: Add Schema Change Tracking UI + Export
+──────────────────────────────────────────────────
+PROBLEM:
+  - Schema changes tracked in `schema_change_history.jsonl` but not visible
+  - User edits data dictionary but can't see history
+  - No comparison between versions
+
+LOCATION: app.py, nexus/audit.py
+
+SOLUTION:
+  1. Add "Dictionary Versions" tab showing: timestamp, actor, field changed, before→after
+  2. Add "Compare Versions" modal: side-by-side diff of two snapshots
+  3. Export version history as CSV: columns [timestamp, actor, table, column, field, before, after]
+  4. Add "Rollback" button: restore dictionary to previous snapshot (reads from audit)
+  5. Show colored diffs: green (added/improved), red (removed/degraded)
+
+FILES TO CHANGE:
+  - app.py: Add "Dictionary History" section in Data Dictionary tab
+  - app.py: Add compare modal with side-by-side view
+  - nexus/audit.py: Add get_version_history() function
+  - nexus/reporting.py: Add export_version_history_csv() function
+
+HACKATHON WIN:
+  Governance + audit trail = enterprise story
+
+---
+
+[4] 🟠 FIX: Add Custom ER Diagram Styling Options
+──────────────────────────────────────────────────
+PROBLEM:
+  - ER diagram styling hardcoded in visualization.py
+  - No domain coloring or visual customization
+  - PyVis layout not configurable
+
+LOCATION: nexus/visualization.py (build_erd_html)
+
+SOLUTION:
+  1. Add ERStyleConfig: table_colors (dict), relationship_colors, font_size, layout_spacing
+  2. Create preset styles: [Default, Dark Mode, Business, Technical, Colorblind-Friendly]
+  3. In UI: Add style picker dropdown
+  4. Load style from config file or pass in run_analysis()
+  5. Apply colors to domain (DOMAIN_ORDER colors already defined)
+
+FILES TO CHANGE:
+  - nexus/models.py: Add ERStyleConfig dataclass
+  - nexus/visualization.py: Parameterize colors + fonts
+  - app.py: Add "ER Diagram Style" dropdown
+  - config/er_styles.json: New file with preset styles
+
+HACKATHON WIN:
+  Beautiful visualizations = judges go "wow"
+
+---
+
+[4] 🟡 FIX: Add Data Lineage Tracking (Show Dependencies)
+──────────────────────────────────────────────────────────
+PROBLEM:
+  - No upstream/downstream dependency tracking
+  - User doesn't know which tables feed which
+  - No parent-child table hierarchy beyond FK
+
+LOCATION: New feature, nexus/lineage.py
+
+SOLUTION:
+  1. Create Lineage Graph: nodes are tables, edges are relationships + inferred joins
+  2. Compute transitive closure: find all upstream tables for a given table
+  3. Add "Lineage" tab showing: tree view of dependencies, upstream count, cycles detection
+  4. In ER diagram: highlight path from selected table upstream/downstream
+  5. Export lineage as: mermaid graph-lr format
+
+FILES TO CHANGE:
+  - nexus/lineage.py: New file - build_lineage_graph(), find_upstream(), find_downstream()
+  - nexus/analysis.py: Call build_lineage_graph() in run_analysis()
+  - app.py: Add "Lineage" tab with expandable tree view
+  - nexus/visualization.py: Add highlight_lineage() for ER diagram
+
+HACKATHON WIN:
+  Advanced analytics = judges see you understand data architecture
+
+---
+
+[4] 🟡 FIX: Add Relationship Confidence Visualization
+──────────────────────────────────────────────────────
+PROBLEM:
+  - Relationships show confidence scores but not visually distinct
+  - High vs. low confidence looks the same in ER diagram
+  - User can't prioritize which FKs are reliable
+
+LOCATION: nexus/schema.py (infer_foreign_keys), visualization.py
+
+SOLUTION:
+  1. In ER diagram: confidence >= 0.95 = solid line, 0.8-0.95 = dashed, <0.8 = dotted red
+  2. Add "Relationship Audit" tab: list all relationships with confidence + hit count
+  3. Show: FK references found / total child rows (e.g., "3,421 of 5,000 orders have valid customer_id")
+  4. Add tooltip on hover: reason for confidence score calculation
+  5. Filter relationships by min confidence slider
+
+FILES TO CHANGE:
+  - visualization.py: Parameterize line style by confidence
+  - app.py: Add "Relationship Audit" tab showing all relationships + confidence
+  - app.py: Add confidence filter slider
+
+HACKATHON WIN:
+  Data quality transparency = judges trust the system
+
+---
+
+===============================================================================
+PHASE 4: MAJOR FEATURES (Total: ~20 hours, likely post-hackathon)
+===============================================================================
+
+[5] 🔴 FIX: Add Real-Time Collaborative Features (WebSockets)
+──────────────────────────────────────────────────────────────
+PROBLEM:
+  - No live collaboration (each user isolated session)
+  - Can't share results live during demo
+  - No notifications when analysis completes
+
+LOCATION: New feature, api.py WebSocket handlers
+
+REQUIRES:
+  - pip install websockets
+  - npm install ws
+
+SOLUTION:
+  1. Add WebSocket endpoint in FastAPI: /api/ws/analysis/{analysis_id}
+  2. Multiple React clients connect to same analysis result stream
+  3. When Streamlit completes analysis, broadcast to all connected clients
+  4. Show live progress: "Profiling... 55%", real-time updates
+  5. Add shared whiteboard: annotate ER diagram together
+  6. Broadcast dictionary edits in real-time
+
+FILES TO CHANGE:
+  - api.py: Add @app.websocket("/api/ws/analysis/{analysis_id}")
+  - nexus-ui/src/App.tsx: Add WebSocket client, subscribe to progress
+  - nexus-ui/src/components: Add collaborative annotation tools
+
+HACKATHON WIN:
+  If you have time: "Live demo where all judges see same result in real-time"
+
+---
+
+[5] 🟠 FIX: Add Advanced ML Features (Anomaly Detection, Trend Analysis)
+─────────────────────────────────────────────────────────────────────────
+PROBLEM:
+  - Limited to basic quality metrics
+  - No outlier/anomaly detection
+  - No trend forecasting for time series
+
+REQUIRES:
+  - pip install scikit-learn scipy
+
+SOLUTION:
+  1. For each numeric column: compute z-score, IQR, isolation forest anomalies
+  2. For time-series columns: fit ARIMA, detect trend + seasonality
+  3. Add "Data Anomalies" tab: show outlier rows, anomaly score distribution
+  4. Add "Trend Analysis" tab: time series plots, forecast next 30 days
+  5. Integration with Ollama: "Based on detected anomalies, likely cause is..."
+
+FILES TO CHANGE:
+  - nexus/anomalies.py: New file - detect_outliers(), compute_anomaly_scores()
+  - nexus/timeseries.py: New file - fit_arima(), detect_trend(), forecast()
+  - app.py: Add "Anomalies" + "Trends" tabs
+  - nexus/ai.py: Add anomaly context to Ollama prompts
+
+HACKATHON WIN:
+  "Advanced analytics from your data" = AI-powered insights story
+
+---
+
+[5] 🟡 FIX: Add dbt/Airflow Integration (CI/CD Hooks)
+─────────────────────────────────────────────────────
+PROBLEM:
+  - No integration with popular data orchestration tools
+  - Can't trigger from dbt runs or Airflow DAGs
+  - No GitHub Actions support
+
+SOLUTION:
+  1. Add GitHub Actions workflow: on PR to data-models/*, trigger Nexus analysis
+  2. Add webhook endpoint: POST /api/webhooks/dbt-run (receive event, run analysis)
+  3. Add Airflow operator: nexus_analyze_task() - wraps API call
+  4. Store webhook signatures + verify source
+  5. Report results as PR comment or Slack notification
+
+FILES TO CHANGE:
+  - api.py: Add POST /api/webhooks/dbt-run, /api/webhooks/airflow-trigger
+  - api.py: Add webhook signature verification (HMAC-SHA256)
+  - .github/workflows/data-analyze.yml: New workflow file
+  - nexus_operators.py: New file - Airflow operator class
+
+HACKATHON WIN:
+  "Integrates with your existing data stack" = production readiness
+
+---
+
+===============================================================================
+IMPLEMENTATION PRIORITY MATRIX (For Competition)
+===============================================================================
+
+MUST-DO (Next 6 hours, highest ROI):
+  [1] Silent AI failures → clear error messages
+  [1] File upload size warnings
+  [2] Custom data quality rules UI
+  [3] User isolation + basic auth (critical for multi-user story)
+  [3] Rate limiting (security)
+
+SHOULD-DO (Next 8 hours):
+  [2] Stratified sampling (better analysis accuracy)
+  [3] M2M relationship detection
+  [3] Dictionary export formats (Excel + CSV)
+  [2] Sensitive data detection (GDPR story)
+
+NICE-TO-HAVE (If time permits):
+  [2] Result caching (performance demo)
+  [4] Database backend (big story, needs migration)
+  [3] Schema change tracking UI
+  [4] Data lineage visualization
+
+SKIP FOR HACKATHON (Post-submission improvements):
+  [4] Collaborative WebSockets
+  [5] ML anomaly detection
+  [5] dbt/Airflow integration
+
+================================================================================
+ESTIMATED TOTAL TIME (Selected Items)
+================================================================================
+
+MUST-DO:        6 hours
+SHOULD-DO:      8 hours
+NICE-TO-HAVE:   4 hours (select 2-3 only)
+────────────────────────
+TOTAL:          14-18 hours of coding
+
+Recommended approach:
+  - Day 1 (4 hours): MUST-DO items (immediate credibility)
+  - Day 2 (4 hours): SHOULD-DO items (robust features)
+  - Day 3 (remaining): Nice-to-have + polish + demo prep
+
+================================================================================
+JUDGE TALKING POINTS (After Fixes)
+================================================================================
+
+After completing MUST-DO:
+  "We built enterprise-grade error handling and security from day one"
+
+After completing SHOULD-DO:
+  "Data quality isn't one-size-fits-all. We let organizations define their own rules"
+  "Our relationship detection handles complex schemas (M2M tables, composite keys)"
+  "Real-world export formats (Excel, CSV, PDF) not just JSON"
+
+After completing NICE-TO-HAVE:
+  "We persist analysis history with full audit trails (GDPR compliant)"
+  "Result caching makes demos lightning-fast while keeping data fresh"
+
+================================================================================
