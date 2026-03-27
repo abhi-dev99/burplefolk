@@ -705,6 +705,8 @@ def _answer_top_products_by_revenue(question: str, tables: Dict[str, pd.DataFram
 
 def _deterministic_agent_answer(question: str, tables: Dict[str, pd.DataFrame]) -> Optional[str]:
     for handler in (
+        _answer_entity_count,
+        _answer_entity_names,
         _answer_entity_lookup,
         _answer_top_products_by_revenue,
         _answer_highest_revenue_month,
@@ -744,6 +746,123 @@ def _extract_threshold(question: str, default: int = 5) -> int:
             except Exception:
                 return default
     return default
+
+
+def _normalize_entity_word(word: str) -> str:
+    w = (word or "").strip().lower()
+    if w.endswith("ies") and len(w) > 3:
+        return w[:-3] + "y"
+    if w.endswith("s") and len(w) > 2:
+        return w[:-1]
+    return w
+
+
+def _pluralize_entity(word: str) -> str:
+    w = (word or "").strip().lower()
+    if not w:
+        return "records"
+    if w.endswith("y") and len(w) > 2 and w[-2] not in "aeiou":
+        return w[:-1] + "ies"
+    if w.endswith("s"):
+        return w
+    return w + "s"
+
+
+def _resolve_entity_table(question: str, tables: Dict[str, pd.DataFrame]) -> Optional[Tuple[str, str]]:
+    q = (question or "").lower()
+    synonym_to_table = {
+        "shop": "stores",
+        "shops": "stores",
+        "store": "stores",
+        "stores": "stores",
+        "staff": "staffs",
+        "staffs": "staffs",
+        "employee": "staffs",
+        "employees": "staffs",
+    }
+
+    for token, forced_table in synonym_to_table.items():
+        if re.search(rf"\b{re.escape(token)}\b", q):
+            for table_name in tables.keys():
+                if str(table_name).lower() == forced_table:
+                    return str(table_name), token
+
+    for table_name in tables.keys():
+        t = str(table_name).lower()
+        singular = _normalize_entity_word(t)
+        if re.search(rf"\b{re.escape(t)}\b", q) or re.search(rf"\b{re.escape(singular)}\b", q):
+            return str(table_name), singular
+
+    return None
+
+
+def _answer_entity_count(question: str, tables: Dict[str, pd.DataFrame]) -> Optional[str]:
+    q = (question or "").lower()
+    if not any(token in q for token in ["how many", "count", "number of", "total number"]):
+        return None
+
+    resolved = _resolve_entity_table(question, tables)
+    if not resolved:
+        return None
+
+    table_name, entity_word = resolved
+    frame = tables.get(table_name)
+    if frame is None:
+        return None
+
+    count_val = int(len(frame.index))
+    entity_plural = _pluralize_entity(entity_word if entity_word else table_name)
+    if count_val == 1:
+        entity_plural = _normalize_entity_word(entity_plural)
+    return f"We have {count_val} {entity_plural}."
+
+
+def _answer_entity_names(question: str, tables: Dict[str, pd.DataFrame]) -> Optional[str]:
+    q = (question or "").lower()
+    asks_for_names = (
+        any(token in q for token in ["name", "names", "list"]) and
+        not any(token in q for token in ["count", "how many", "number of"]) 
+    )
+    if not asks_for_names:
+        return None
+
+    resolved = _resolve_entity_table(question, tables)
+    if not resolved:
+        return None
+
+    table_name, entity_word = resolved
+    frame = tables.get(table_name)
+    if frame is None or frame.empty:
+        return None
+
+    cols = [str(c) for c in frame.columns]
+    singular = _normalize_entity_word(entity_word if entity_word else table_name)
+    table_singular = _normalize_entity_word(str(table_name))
+    name_col = _pick_best_column(
+        cols,
+        [
+            f"{singular}_name",
+            f"{table_singular}_name",
+            "name",
+            "store_name",
+            "product_name",
+            "first_name",
+            "last_name",
+        ],
+    )
+    if not name_col:
+        return None
+
+    values = frame[name_col].dropna().astype(str).str.strip()
+    values = values[values != ""]
+    unique_values = list(dict.fromkeys(values.tolist()))
+    if not unique_values:
+        return None
+
+    top_n = min(20, len(unique_values))
+    items = "\n".join([f"- {v}" for v in unique_values[:top_n]])
+    entity_plural = _pluralize_entity(singular)
+    return f"Here are the {entity_plural} names:\n{items}"
 
 
 def _find_table(
@@ -1082,13 +1201,9 @@ Rules:
         if "could not confidently map" not in deterministic_fallback.lower():
             return deterministic_fallback
 
-        diag_tail = ""
-        if failure_log:
-            diag_tail = "\nTechnical note: " + " | ".join(failure_log[:3])
         return (
             "I could not execute a valid SQL plan for this question yet. "
             "Please retry with one extra detail like date range, store, or top-N constraint."
-            + diag_tail
         )
     except Exception as e:
         fallback = answer_question_from_tables(question, tables)
@@ -1179,7 +1294,7 @@ def _extract_sql_candidate(text: str) -> str:
     if ";" in sql:
         sql = sql.split(";", 1)[0].strip()
 
-    if " limit " not in f" {sql.lower()} ":
+    if not re.search(r"\blimit\s+\d+\b", sql, flags=re.IGNORECASE):
         sql = f"{sql} LIMIT 50"
     return sql
 
