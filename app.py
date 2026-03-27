@@ -1035,8 +1035,11 @@ def main() -> None:
                 login_col1, login_col2 = st.columns(2)
                 with login_col1:
                     if st.button("Sign In", use_container_width=True, key="firebase_signin_submit_sidebar"):
-                        if not all([firebase_cfg.get("apiKey"), firebase_cfg.get("authDomain"), firebase_cfg.get("projectId"), firebase_cfg.get("storageBucket")]):
-                            st.error("Firebase runtime config is missing.")
+                        if not firebase_cfg.get("apiKey"):
+                            st.error(
+                                "Firebase runtime config is missing: FIREBASE_API_KEY. "
+                                "Set it in Streamlit Secrets and reboot the app."
+                            )
                         else:
                             ok, msg, user = firebase_email_password_login(
                                 firebase_api_key=firebase_cfg["apiKey"],
