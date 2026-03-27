@@ -58,7 +58,8 @@ def _candidate_gemini_models(selected_model: str, api_key: str, timeout_seconds:
     if not available:
         return [selected_model]
 
-    preferred = [selected_model, "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b"]
+    # Prefer broadly compatible generateContent models first.
+    preferred = [selected_model, "gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-1.5-pro", "gemini-2.0-flash"]
     ordered: List[str] = []
     for model in preferred + available:
         if model in available and model not in ordered:
@@ -294,7 +295,23 @@ def _generate_gemini_brief(analysis: Dict, model: str, api_key: str, timeout_sec
                 break
 
             if response.status_code >= 400:
-                raise RuntimeError(f"Gemini request failed: {_extract_gemini_error_message(response)}")
+                error_detail = _extract_gemini_error_message(response)
+                lowered = error_detail.lower()
+
+                # Some models are listed for the key but do not support generateContent.
+                # In that case, try the next candidate model instead of failing immediately.
+                if (
+                    response.status_code == 400
+                    and (
+                        "interactions api" in lowered
+                        or "invalid_argument" in lowered
+                        or "does not support" in lowered
+                        or "only supports" in lowered
+                    )
+                ):
+                    break
+
+                raise RuntimeError(f"Gemini request failed: {error_detail}")
 
             data = response.json() if response.content else {}
             candidates = data.get("candidates", [])
