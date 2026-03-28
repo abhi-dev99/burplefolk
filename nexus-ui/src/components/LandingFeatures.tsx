@@ -163,17 +163,17 @@ export default function LandingFeatures() {
           <button 
             type="button"
             onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-            className="px-8 py-4 bg-gradient-to-tr from-[#004289] to-[#0059B5] text-white rounded-2xl font-medium shadow-[0_4px_20px_rgba(0,89,181,0.3)] hover:opacity-90 hover:-translate-y-1 transition-all"
+            className="px-8 py-4 bg-[#0059B5] border-transparent text-white hover:bg-[#004a99] dark:bg-[#60A5FA] dark:text-[#0b1220] dark:hover:bg-[#3b82f6] rounded-full font-medium shadow-[0_4px_20px_rgba(0,89,181,0.3)] dark:shadow-[0_4px_20px_rgba(96,165,250,0.3)] hover:-translate-y-1 transition-all tracking-wide"
           >
             Start Analyzing Now
           </button>
 
           <div className="w-full flex flex-col md:flex-row justify-between items-center mt-32 pt-8 border-t border-black/5 dark:border-white/5 text-sm text-neutral-500 font-light space-y-4 md:space-y-0">
-            <span>&copy; {new Date().getFullYear()} Nexus Intelligence. All rights reserved.</span>
+            <span className="font-inter lowercase tracking-tight">
+              &copy; {new Date().getFullYear()} <span className="font-bold">nexus</span> intelligence. All rights reserved.
+            </span>
             <div className="flex space-x-8">
-              <a href="#" className="hover:text-neutral-900 dark:hover:text-white transition-colors">Documentation</a>
-              <a href="#" className="hover:text-neutral-900 dark:hover:text-white transition-colors">Privacy</a>
-              <a href="#" className="hover:text-neutral-900 dark:hover:text-white transition-colors">Terms</a>
+              <a href="https://drive.google.com/file/d/1tlPmZEEYwTr5Uo_R6wvz-vFlQJS1WC6u/view?usp=sharing" target="_blank" rel="noreferrer" className="hover:text-neutral-900 dark:hover:text-white transition-colors">Documentation</a>
             </div>
           </div>
         </div>

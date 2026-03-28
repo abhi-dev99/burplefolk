@@ -114,12 +114,12 @@ function PasswordField({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className={clsx(className, "pr-10")}
+        className={clsx(className, "!pr-12")}
       />
       <button
         type="button"
         onClick={onToggle}
-        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-100"
+        className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-100 transition-colors"
         aria-label={visible ? `Hide ${placeholder}` : `Show ${placeholder}`}
         title={visible ? "Hide value" : "Show value"}
       >
@@ -3400,17 +3400,41 @@ export default function App() {
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.95 }}
-                  className="w-full space-y-4"
+                  className="w-full space-y-4 relative"
+                  onDragEnter={handleDrag}
+                  onDragOver={handleDrag}
+                  onDragLeave={handleDrag}
+                  onDrop={handleDrop}
                 >
+                  {/* Huge Drag Overlay to prevent flicker and clearly communicate intent */}
+                  {dragActive && (
+                    <div 
+                      className="absolute inset-[-20px] z-50 rounded-[3rem] border-2 border-dashed border-[#0059B5] bg-[#0059B5]/10 dark:bg-[#60A5FA]/10 backdrop-blur-md flex flex-col items-center justify-center transition-all animate-in fade-in duration-200"
+                      onDragEnter={handleDrag}
+                      onDragOver={handleDrag}
+                      onDragLeave={handleDrag}
+                      onDrop={handleDrop}
+                    >
+                      <div className="bg-white dark:bg-[#0b1220] p-4 rounded-full shadow-2xl mb-4">
+                        <FileUp className="w-8 h-8 text-[#0059B5] dark:text-[#60A5FA]" />
+                      </div>
+                      <span className="text-[#0059B5] dark:text-[#60A5FA] font-medium text-xl bg-white dark:bg-[#0b1220] px-8 py-3 rounded-full shadow-lg">
+                        Drop Dataset Here
+                      </span>
+                    </div>
+                  )}
+
                   <div className="bg-white/40 dark:bg-black/20 backdrop-blur-3xl border border-white/60 dark:border-white/5 rounded-[1.5rem] p-4">
                     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                      <div>
+                      <div className="flex items-center gap-2">
                         <div className="text-sm font-medium text-neutral-800 dark:text-neutral-100">
                           Analysis Row Limit
                         </div>
-                        <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                          Set to 0 for full scan, or choose up to 1,000,000 rows
-                          per table.
+                        <div className="group relative flex items-center justify-center w-5 h-5 rounded-full border border-black/10 dark:border-white/10 text-[10px] text-neutral-500 cursor-help bg-black/5 dark:bg-white/5 transition-colors hover:bg-black/10 dark:hover:bg-white/10">
+                          i
+                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2.5 bg-neutral-900 border border-white/10 dark:bg-neutral-100 text-white dark:text-black text-xs font-medium rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all text-center z-50 shadow-xl pointer-events-none">
+                            Set to 0 for full scan, or choose up to 1,000,000 rows per table.
+                          </div>
                         </div>
                       </div>
                       <select
@@ -3418,7 +3442,7 @@ export default function App() {
                         onChange={(e) =>
                           setAnalysisRowLimit(Number(e.target.value))
                         }
-                        className="px-3 py-2 rounded-xl bg-white/70 dark:bg-black/40 border border-black/10 dark:border-white/10 text-sm"
+                        className="pl-4 pr-10 py-2.5 rounded-xl bg-white/70 dark:bg-black/40 border border-black/10 dark:border-white/10 text-sm focus:outline-none focus:ring-2 focus:ring-[#0059B5] transition-all"
                       >
                         <option value="5000">5,000 rows</option>
                         <option value="50000">50,000 rows</option>
@@ -3436,10 +3460,6 @@ export default function App() {
                         ? "bg-white/60 dark:bg-white/10 border-[#0059B5] dark:border-[#60A5FA]"
                         : "bg-white/40 dark:bg-black/20 border-white/60 dark:border-white/5 hover:bg-white/60 dark:hover:bg-black/40",
                     )}
-                    onDragEnter={handleDrag}
-                    onDragLeave={handleDrag}
-                    onDragOver={handleDrag}
-                    onDrop={handleDrop}
                   >
                     <div className="flex items-center gap-5 pointer-events-none">
                       <div
@@ -3508,7 +3528,7 @@ export default function App() {
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
-                  className="w-full max-w-2xl bg-white/50 dark:bg-black/30 backdrop-blur-3xl p-10 rounded-[2rem] border border-white/60 dark:border-white/5 shadow-[0_20px_40px_rgba(0,0,0,0.04)] text-left"
+                  className="w-full max-w-2xl bg-white/50 dark:bg-black/30 backdrop-blur-3xl p-10 mt-8 md:mt-12 rounded-[2rem] border border-white/60 dark:border-white/5 shadow-[0_20px_40px_rgba(0,0,0,0.04)] text-left"
                 >
                   <form onSubmit={handleDbSubmit} className="space-y-6">
                     <h3 className="font-light tracking-wide text-3xl text-neutral-900 dark:text-white mb-8">
@@ -3521,7 +3541,7 @@ export default function App() {
                         onChange={(e) =>
                           setDbForm({ ...dbForm, db_type: e.target.value })
                         }
-                        className="w-full p-4 rounded-xl border-0 ring-1 ring-black/5 dark:ring-white/10 bg-white/50 dark:bg-black/50 text-base font-light focus:outline-none focus:ring-2 focus:ring-[#0059B5] dark:text-white transition-shadow"
+                        className="w-full py-4 pl-4 pr-12 rounded-xl border-0 ring-1 ring-black/5 dark:ring-white/10 bg-white/50 dark:bg-black/50 text-base font-light focus:outline-none focus:ring-2 focus:ring-[#0059B5] dark:text-white transition-shadow"
                       >
                         <option value="postgresql">PostgreSQL</option>
                         <option value="mysql">MySQL</option>
@@ -3591,7 +3611,7 @@ export default function App() {
                           onChange={(e) =>
                             setAnalysisRowLimit(Number(e.target.value))
                           }
-                          className="w-full p-4 rounded-xl border-0 ring-1 ring-black/5 dark:ring-white/10 bg-white/50 dark:bg-black/50 text-base font-light focus:outline-none focus:ring-2 focus:ring-[#0059B5] dark:text-white transition-shadow"
+                          className="w-full py-4 pl-4 pr-12 rounded-xl border-0 ring-1 ring-black/5 dark:ring-white/10 bg-white/50 dark:bg-black/50 text-base font-light focus:outline-none focus:ring-2 focus:ring-[#0059B5] dark:text-white transition-shadow"
                         >
                           <option value="5000">5,000 rows</option>
                           <option value="50000">50,000 rows</option>
@@ -3645,9 +3665,11 @@ export default function App() {
         <LandingFeatures />
       )}
 
-      <footer className="fixed bottom-6 left-1/2 -translate-x-1/2 text-center text-xs font-light tracking-[0.2em] text-neutral-400 dark:text-neutral-600 mix-blend-difference pointer-events-none">
-        NEXUS INTELLIGENCE
-      </footer>
+      {!(appView === "home" && ingestionState === "idle") && (
+        <footer className="w-full pb-6 pt-10 text-center text-xs font-light tracking-[0.2em] text-neutral-400 dark:text-neutral-600 mix-blend-difference pointer-events-none">
+          NEXUS INTELLIGENCE
+        </footer>
+      )}
 
       <AnimatePresence>
         {agentModalOpen && !agentAuthState.ok && (
