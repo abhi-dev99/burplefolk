@@ -63,6 +63,10 @@ type AgentFormState = {
 };
 
 type SecretFieldKey =
+  | "firebaseApiKey"
+  | "firebaseAuthDomain"
+  | "firebaseProjectId"
+  | "firebaseStorageBucket"
   | "firebaseLoginPassword"
   | "gmailAppPassword"
   | "geminiApiKey"
@@ -98,13 +102,15 @@ function PasswordField({
   placeholder,
   visible,
   onToggle,
+  showToggle = true,
   className,
 }: {
   value: string;
   onChange: (next: string) => void;
   placeholder: string;
   visible: boolean;
-  onToggle: () => void;
+  onToggle?: () => void;
+  showToggle?: boolean;
   className: string;
 }) {
   return (
@@ -114,17 +120,19 @@ function PasswordField({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className={clsx(className, "!pr-12")}
+        className={showToggle ? clsx(className, "!pr-12") : className}
       />
-      <button
-        type="button"
-        onClick={onToggle}
-        className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-100 transition-colors"
-        aria-label={visible ? `Hide ${placeholder}` : `Show ${placeholder}`}
-        title={visible ? "Hide value" : "Show value"}
-      >
-        {visible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-      </button>
+      {showToggle ? (
+        <button
+          type="button"
+          onClick={onToggle}
+          className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-100 transition-colors"
+          aria-label={visible ? `Hide ${placeholder}` : `Show ${placeholder}`}
+          title={visible ? "Hide value" : "Show value"}
+        >
+          {visible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -2520,6 +2528,10 @@ export default function App() {
   const [secretVisibility, setSecretVisibility] = useState<
     Record<SecretFieldKey, boolean>
   >({
+    firebaseApiKey: false,
+    firebaseAuthDomain: false,
+    firebaseProjectId: false,
+    firebaseStorageBucket: false,
     firebaseLoginPassword: false,
     gmailAppPassword: false,
     geminiApiKey: false,
@@ -2554,6 +2566,26 @@ export default function App() {
   const toggleSecretVisibility = (key: SecretFieldKey) => {
     setSecretVisibility((prev) => ({ ...prev, [key]: !prev[key] }));
   };
+
+  const setFirebaseSecretsVisibility = (visible: boolean) => {
+    setSecretVisibility((prev) => ({
+      ...prev,
+      firebaseApiKey: visible,
+      firebaseAuthDomain: visible,
+      firebaseProjectId: visible,
+      firebaseStorageBucket: visible,
+      firebaseLoginPassword: visible,
+    }));
+  };
+
+  const hideAllSecrets = () => setFirebaseSecretsVisibility(false);
+  const unhideAllSecrets = () => setFirebaseSecretsVisibility(true);
+  const firebaseSecretsHidden =
+    !secretVisibility.firebaseApiKey &&
+    !secretVisibility.firebaseAuthDomain &&
+    !secretVisibility.firebaseProjectId &&
+    !secretVisibility.firebaseStorageBucket &&
+    !secretVisibility.firebaseLoginPassword;
 
   const refreshAgentLogs = async () => {
     try {
@@ -2708,6 +2740,12 @@ export default function App() {
     const timer = window.setTimeout(() => setAgentToast(null), 3500);
     return () => window.clearTimeout(timer);
   }, [agentToast]);
+
+  useEffect(() => {
+    if (agentModalOpen && !agentAuthState.ok) {
+      hideAllSecrets();
+    }
+  }, [agentModalOpen, agentAuthState.ok]);
 
   const applyAutoReplyState = async (enabled: boolean) => {
     if (!agentAuthState.ok) {
@@ -3717,12 +3755,26 @@ export default function App() {
                       : "Sign in with Firebase runtime credentials to activate the agent."}
                   </p>
                 </div>
-                <button
-                  onClick={() => setAgentModalOpen(false)}
-                  className="px-3 py-2 rounded-xl bg-black/5 dark:bg-white/10 text-sm font-medium"
-                >
-                  Close
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      if (firebaseSecretsHidden) {
+                        unhideAllSecrets();
+                        return;
+                      }
+                      hideAllSecrets();
+                    }}
+                    className="px-3 py-2 rounded-xl bg-black/5 dark:bg-white/10 text-sm font-medium"
+                  >
+                    {firebaseSecretsHidden ? "Unhide all" : "Hide all"}
+                  </button>
+                  <button
+                    onClick={() => setAgentModalOpen(false)}
+                    className="px-3 py-2 rounded-xl bg-black/5 dark:bg-white/10 text-sm font-medium"
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
 
               <div className="p-6 space-y-6">
@@ -3744,49 +3796,57 @@ export default function App() {
                         Firebase Runtime Credentials
                       </h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <input
+                        <PasswordField
                           value={agentForm.firebaseApiKey}
-                          onChange={(e) =>
+                          onChange={(next) =>
                             setAgentForm((prev) => ({
                               ...prev,
-                              firebaseApiKey: e.target.value,
+                              firebaseApiKey: next,
                             }))
                           }
                           placeholder="Firebase API Key"
-                          className="px-4 py-3 rounded-xl bg-white/60 dark:bg-black/30 border border-black/10 dark:border-white/10"
+                          visible={secretVisibility.firebaseApiKey}
+                          showToggle={false}
+                          className="w-full px-4 py-3 rounded-xl bg-white/60 dark:bg-black/30 border border-black/10 dark:border-white/10"
                         />
-                        <input
+                        <PasswordField
                           value={agentForm.firebaseAuthDomain}
-                          onChange={(e) =>
+                          onChange={(next) =>
                             setAgentForm((prev) => ({
                               ...prev,
-                              firebaseAuthDomain: e.target.value,
+                              firebaseAuthDomain: next,
                             }))
                           }
                           placeholder="Firebase Auth Domain"
-                          className="px-4 py-3 rounded-xl bg-white/60 dark:bg-black/30 border border-black/10 dark:border-white/10"
+                          visible={secretVisibility.firebaseAuthDomain}
+                          showToggle={false}
+                          className="w-full px-4 py-3 rounded-xl bg-white/60 dark:bg-black/30 border border-black/10 dark:border-white/10"
                         />
-                        <input
+                        <PasswordField
                           value={agentForm.firebaseProjectId}
-                          onChange={(e) =>
+                          onChange={(next) =>
                             setAgentForm((prev) => ({
                               ...prev,
-                              firebaseProjectId: e.target.value,
+                              firebaseProjectId: next,
                             }))
                           }
                           placeholder="Firebase Project ID"
-                          className="px-4 py-3 rounded-xl bg-white/60 dark:bg-black/30 border border-black/10 dark:border-white/10"
+                          visible={secretVisibility.firebaseProjectId}
+                          showToggle={false}
+                          className="w-full px-4 py-3 rounded-xl bg-white/60 dark:bg-black/30 border border-black/10 dark:border-white/10"
                         />
-                        <input
+                        <PasswordField
                           value={agentForm.firebaseStorageBucket}
-                          onChange={(e) =>
+                          onChange={(next) =>
                             setAgentForm((prev) => ({
                               ...prev,
-                              firebaseStorageBucket: e.target.value,
+                              firebaseStorageBucket: next,
                             }))
                           }
                           placeholder="Firebase Storage Bucket"
-                          className="px-4 py-3 rounded-xl bg-white/60 dark:bg-black/30 border border-black/10 dark:border-white/10"
+                          visible={secretVisibility.firebaseStorageBucket}
+                          showToggle={false}
+                          className="w-full px-4 py-3 rounded-xl bg-white/60 dark:bg-black/30 border border-black/10 dark:border-white/10"
                         />
                       </div>
                     </section>
@@ -3805,7 +3865,7 @@ export default function App() {
                             }))
                           }
                           placeholder="Firebase Email"
-                          className="px-4 py-3 rounded-xl bg-white/60 dark:bg-black/30 border border-black/10 dark:border-white/10"
+                          className="w-full px-4 py-3 rounded-xl bg-white/60 dark:bg-black/30 border border-black/10 dark:border-white/10"
                         />
                         <PasswordField
                           value={agentForm.firebaseLoginPassword}
@@ -3817,10 +3877,8 @@ export default function App() {
                           }
                           placeholder="Firebase Password"
                           visible={secretVisibility.firebaseLoginPassword}
-                          onToggle={() =>
-                            toggleSecretVisibility("firebaseLoginPassword")
-                          }
-                          className="px-4 py-3 rounded-xl bg-white/60 dark:bg-black/30 border border-black/10 dark:border-white/10"
+                          showToggle={false}
+                          className="w-full px-4 py-3 rounded-xl bg-white/60 dark:bg-black/30 border border-black/10 dark:border-white/10"
                         />
                       </div>
                       <button
