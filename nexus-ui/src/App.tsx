@@ -1729,7 +1729,10 @@ export default function App() {
       setIngestionState('done');
     } catch (e) {
       console.error(e);
-      alert("Failed to analyze. Ensure backend API is running at localhost:8000!");
+      const message = axios.isAxiosError(e)
+        ? (e.response?.data?.detail || e.message || 'Unknown API error')
+        : 'Unknown API error';
+      alert(`Failed to analyze. Backend target: ${API_BASE}\nError: ${message}`);
       setIngestionState('idle');
     }
   };

@@ -42,9 +42,24 @@ from nexus.semantic import (
 
 app = FastAPI()
 
+
+def _cors_origins_from_env() -> List[str]:
+    raw = os.getenv("CORS_ALLOW_ORIGINS", "*").strip()
+    if not raw:
+        return ["*"]
+    if raw == "*":
+        return ["*"]
+    normalized = raw.replace("\n", " ").replace("\t", " ")
+    tokens: List[str] = []
+    for part in normalized.split(","):
+        subparts = [token.strip() for token in part.split(" ") if token.strip()]
+        tokens.extend(subparts)
+    return tokens or ["*"]
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins_from_env(),
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -235,6 +250,11 @@ def sanitize_for_json(data):
     elif hasattr(data, 'dtype'):
         return data.item()
     return data
+
+
+@app.get("/healthz")
+async def healthz():
+    return {"ok": True, "service": "nexus-api"}
 
 @app.post("/api/analyze/csv")
 async def analyze_csv(
