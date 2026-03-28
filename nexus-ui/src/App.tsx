@@ -315,23 +315,7 @@ function TopNav({
 // ------------------------------------
 // FUNCTIONAL VIEWS
 // ------------------------------------
-const highlightText = (text: string) => {
-  if (!text) return text;
-  const highlighted = text
-    .replace(
-      /([a-zA-Z0-9_]+(?=\s*\())/g,
-      '<span class="text-[#0059B5] dark:text-[#60A5FA] font-medium">$1</span>',
-    )
-    .replace(
-      /(\d+(?:\.\d+)?%)/g,
-      '<span class="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded-md font-medium text-sm">$1</span>',
-    )
-    .replace(
-      /(candidate foreign-key links|Largest table|issues)/gi,
-      '<span class="text-rose-600 dark:text-rose-400 font-medium">$1</span>',
-    );
-  return <span dangerouslySetInnerHTML={{ __html: highlighted }} />;
-};
+
 
 const escapeHtml = (value: string) =>
   String(value)
@@ -352,6 +336,15 @@ const formatInlineMarkdown = (line: string) => {
       '<code class="bg-black/5 dark:bg-white/10 px-1.5 py-0.5 rounded text-sm font-mono text-purple-600 dark:text-purple-300">$1</code>',
     );
 };
+
+const InfoTooltip = ({ text }: { text: string }) => (
+  <div className="group relative flex items-center justify-center w-5 h-5 rounded-full border border-black/10 dark:border-white/10 text-[10px] text-neutral-500 cursor-help bg-transparent transition-colors hover:bg-black/5 dark:hover:bg-white/5 ml-2 shrink-0">
+    i
+    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 sm:w-64 p-3 bg-neutral-900 border border-white/10 dark:bg-neutral-100 text-white dark:text-black text-xs font-medium leading-relaxed rounded-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all text-center z-[100] shadow-xl pointer-events-none break-words">
+      {text}
+    </div>
+  </div>
+);
 
 const formatAiBriefToHtml = (raw: string) => {
   const text = String(raw || "").replace(/\r\n/g, "\n");
@@ -523,7 +516,7 @@ function TableNavigatorFAB({
   };
 
   const handleMouseLeave = () => {
-    closeTimeoutRef.current = setTimeout(() => setIsOpen(false), 1000);
+    closeTimeoutRef.current = setTimeout(() => setIsOpen(false), 0);
   };
 
   return (
@@ -700,47 +693,7 @@ function DataView({
     count: number;
   } | null>(null);
 
-  const renderRowTable = (row: any, color: "emerald" | "rose") => {
-    if (!row)
-      return (
-        <span className={`text-${color}-500 italic`}>No data available</span>
-      );
-    const entries = Object.entries(row);
-    if (entries.length === 0)
-      return (
-        <span className={`text-${color}-500 italic`}>No data available</span>
-      );
-    return (
-      <div className="overflow-x-auto w-full">
-        <table className="w-full text-left text-[11px] font-mono whitespace-nowrap">
-          <thead>
-            <tr className={`border-b border-${color}-500/20`}>
-              {entries.map(([k]) => (
-                <th
-                  key={k}
-                  className={`p-2 text-${color}-700 dark:text-${color}-300 font-medium`}
-                >
-                  {k}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            <tr className={`divide-x divide-${color}-500/10`}>
-              {entries.map(([_, v], i) => (
-                <td
-                  key={i}
-                  className={`p-2 text-${color}-900 dark:text-${color}-100`}
-                >
-                  {String(v)}
-                </td>
-              ))}
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    );
-  };
+
   const [dictSearch, setDictSearch] = useState("");
   const [aiPrompt, setAiPrompt] = useState(
     "Generate a comprehensive executive brief addressing data completeness and consistency...",
@@ -953,7 +906,7 @@ function DataView({
     <div
       id={id}
       className={clsx(
-        "bg-white/40 dark:bg-black/20 backdrop-blur-xl border border-white/40 dark:border-white/5 rounded-[2rem] shadow-[0_8px_30px_rgba(0,0,0,0.02)] overflow-hidden",
+        "bg-white/40 dark:bg-black/20 backdrop-blur-xl border border-white/40 dark:border-white/5 rounded-[2rem] shadow-[0_8px_30px_rgba(0,0,0,0.02)]",
         className,
       )}
     >
@@ -1037,58 +990,62 @@ function DataView({
         </h2>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8">
-          <GlassCard className="p-8">
-            <h3 className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest mb-2">
+          <GlassCard className="p-6">
+            <h3 className="text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest mb-2">
               Total Tables
             </h3>
-            <div className="text-5xl font-light text-neutral-900 dark:text-neutral-100">
+            <div className="text-3xl font-light text-neutral-900 dark:text-neutral-100">
               {tables.length}
             </div>
           </GlassCard>
-          <GlassCard className="p-8">
-            <h3 className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest mb-2">
+          <GlassCard className="p-6">
+            <h3 className="text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest mb-2">
               Storage (Est)
             </h3>
-            <div className="text-5xl font-light text-neutral-900 dark:text-neutral-100">
+            <div className="text-3xl font-light text-neutral-900 dark:text-neutral-100">
               {storageEstimateLabel}
             </div>
           </GlassCard>
-          <GlassCard className="p-8">
-            <h3 className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest mb-2">
+          <GlassCard className="p-6">
+            <h3 className="text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest mb-2">
               Avg Quality
             </h3>
-            <div className="text-5xl font-light text-[#0059B5] dark:text-[#60A5FA]">
+            <div className="text-3xl font-light text-[#0059B5] dark:text-[#60A5FA]">
               {avgQuality}
-              <span className="text-2xl">%</span>
+              <span className="text-xl">%</span>
             </div>
           </GlassCard>
-          <GlassCard className="p-8">
-            <h3 className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest mb-2">
+          <GlassCard className="p-6">
+            <h3 className="text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest mb-2">
               Relationships
             </h3>
-            <div className="text-5xl font-light text-neutral-900 dark:text-neutral-100">
+            <div className="text-3xl font-light text-neutral-900 dark:text-neutral-100">
               {analysisData?.analysis?.relationships?.length || 0}
             </div>
           </GlassCard>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
-          <GlassCard className="p-8">
-            <h3 className="text-lg font-light text-neutral-900 dark:text-white mb-4">
-              Risk Snapshot
-            </h3>
-            <div className="overflow-x-auto rounded-2xl border border-black/10 dark:border-white/10">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-black/5 dark:bg-white/10">
-                  <tr>
-                    <th className="px-4 py-3">table</th>
-                    <th className="px-4 py-3 text-right">quality_score</th>
-                    <th className="px-4 py-3 text-right">issues</th>
-                    <th className="px-4 py-3 text-right">rows</th>
-                    <th className="px-4 py-3 text-right">columns</th>
-                  </tr>
-                </thead>
-                <tbody>
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-8 mb-8 items-start">
+          {/* Main Content Area - Risk Snapshot */}
+          <div className="md:col-span-7 flex flex-col w-full">
+            <GlassCard className="p-8">
+              <div className="flex justify-between items-center mb-6">
+                <div className="flex items-center">
+                  <h3 className="text-xl font-light text-neutral-900 dark:text-white">
+                    Risk Snapshot
+                  </h3>
+                  <InfoTooltip text="Tables sorted by lowest data quality score, highlighting the most problematic segments of your schema." />
+                </div>
+              </div>
+
+              <div className="-mx-4 md:-mx-2">
+                <div className="grid grid-cols-12 gap-2 px-4 py-3 text-[10px] font-semibold text-neutral-500 uppercase tracking-widest border-b border-black/5 dark:border-white/5 mb-2">
+                  <div className="col-span-5">Table</div>
+                  <div className="col-span-4 text-right">Score</div>
+                  <div className="col-span-3 text-right">Issues</div>
+                </div>
+
+                <div className="space-y-1">
                   {[...overviewTables]
                     .sort(
                       (a: any, b: any) =>
@@ -1097,91 +1054,125 @@ function DataView({
                     )
                     .slice(0, 6)
                     .map((t: any) => (
-                      <tr
+                      <div
                         key={String(t?.table || "")}
-                        className="border-t border-black/5 dark:border-white/10"
+                        className="grid grid-cols-12 gap-2 px-4 py-3 text-sm items-center rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
                       >
-                        <td className="px-4 py-2.5 font-medium">
+                        <div className="col-span-5 font-medium text-[#0059B5] dark:text-[#60A5FA] truncate">
                           {String(t?.table || "")}
-                        </td>
-                        <td className="px-4 py-2.5 text-right">
-                          {Number(t?.quality_score || 0).toFixed(2)}
-                        </td>
-                        <td className="px-4 py-2.5 text-right">
+                        </div>
+                        <div className="col-span-4 text-right flex justify-end">
+                          <span className={clsx("px-2.5 py-1 rounded-md text-[11px] font-semibold tracking-wide border", Number(t?.quality_score || 0) >= 90 ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/10" : "bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/10")}>
+                            {Number(t?.quality_score || 0).toFixed(1)}%
+                          </span>
+                        </div>
+                        <div className="col-span-3 text-right font-medium text-neutral-700 dark:text-neutral-300">
                           {Array.isArray(t?.issues) ? t.issues.length : 0}
-                        </td>
-                        <td className="px-4 py-2.5 text-right">
-                          {Number(t?.estimated_total_rows || 0)}
-                        </td>
-                        <td className="px-4 py-2.5 text-right">
-                          {Number(t?.column_count || 0)}
-                        </td>
-                      </tr>
+                        </div>
+                      </div>
                     ))}
-                </tbody>
-              </table>
-            </div>
-          </GlassCard>
+                </div>
+              </div>
+            </GlassCard>
+          </div>
 
-          <GlassCard className="p-8">
-            <h3 className="text-lg font-light text-neutral-900 dark:text-white mb-4">
-              Business Context
-            </h3>
-            <p className="text-neutral-600 dark:text-neutral-300 font-light leading-relaxed whitespace-pre-wrap text-base">
-              {highlightText(
-                analysisData?.analysis?.business_context ||
-                  "No context generated.",
-              )}
-            </p>
-          </GlassCard>
+          {/* Sidebar Area */}
+          <div className="md:col-span-5 flex flex-col gap-8 w-full">
+            <GlassCard className="p-8">
+              <div className="flex items-center mb-6">
+                <h3 className="text-xl font-light text-neutral-900 dark:text-white">
+                  Business Context
+                </h3>
+                <InfoTooltip text="Automated semantic analysis of key operational dependencies." />
+              </div>
+              <div className="space-y-3">
+                <div className="flex flex-col xl:flex-row xl:items-center justify-between text-sm border-b border-black/5 dark:border-white/5 pb-3">
+                  <span className="text-neutral-500 font-medium whitespace-nowrap">Target Identity</span>
+                  <span className="text-neutral-900 dark:text-white font-medium xl:text-right mt-1 xl:mt-0 truncate max-w-full">
+                    Relational Schema
+                  </span>
+                </div>
+                <div className="flex flex-col xl:flex-row xl:items-center justify-between text-sm border-b border-black/5 dark:border-white/5 pb-3">
+                  <span className="text-neutral-500 font-medium whitespace-nowrap">Largest Entity</span>
+                  <span className="text-[#0059B5] dark:text-[#60A5FA] font-medium xl:text-right mt-1 xl:mt-0 truncate max-w-full">
+                    {[...overviewTables].sort((a,b) => (b.estimated_total_rows || 0) - (a.estimated_total_rows || 0))[0]?.table || "Unknown"}
+                  </span>
+                </div>
+                <div className="flex flex-col xl:flex-row xl:items-center justify-between text-sm border-b border-black/5 dark:border-white/5 pb-3">
+                  <span className="text-neutral-500 font-medium whitespace-nowrap">Highest Risk Form</span>
+                  <span className="text-rose-600 dark:text-rose-400 font-medium xl:text-right mt-1 xl:mt-0 truncate max-w-full">
+                    {[...overviewTables].sort((a,b) => (a.quality_score || 0) - (b.quality_score || 0))[0]?.table || "None"}
+                  </span>
+                </div>
+                <div className="flex flex-col xl:flex-row xl:items-center justify-between text-sm pt-1">
+                  <span className="text-neutral-500 font-medium whitespace-nowrap">Dependency Linkages</span>
+                  <span className="text-neutral-900 dark:text-white font-medium xl:text-right mt-1 xl:mt-0 truncate max-w-full">
+                    {Array.isArray(analysisData?.analysis?.relationships) ? analysisData.analysis.relationships.length : 0} validated
+                  </span>
+                </div>
+              </div>
+            </GlassCard>
 
-          <GlassCard className="p-8">
-            <h3 className="text-lg font-light text-neutral-900 dark:text-white mb-4">
-              Schema Drift & Governance
-            </h3>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between text-sm border-b border-black/5 dark:border-white/5 pb-2">
-                <span className="text-neutral-600 dark:text-neutral-300 font-light">
-                  Missing `updated_at`
-                </span>
-                <span className="text-rose-500 font-medium">
-                  {
-                    tables.filter(
-                      (t: any) =>
-                        !t.column_profiles?.some((c: any) =>
-                          String(c.column).includes("updated"),
-                        ),
-                    ).length
-                  }{" "}
-                  tables
-                </span>
+            <GlassCard className="p-8">
+              <div className="flex items-center mb-6">
+                <h3 className="text-xl font-light text-neutral-900 dark:text-white">
+                  Governance
+                </h3>
+                <InfoTooltip text="Tracks structural regressions like missing audit trails and broken relationships." />
               </div>
-              <div className="flex items-center justify-between text-sm border-b border-black/5 dark:border-white/5 pb-2">
-                <span className="text-neutral-600 dark:text-neutral-300 font-light">
-                  Missing `created_at`
-                </span>
-                <span className="text-rose-500 font-medium">
-                  {
-                    tables.filter(
-                      (t: any) =>
-                        !t.column_profiles?.some((c: any) =>
-                          String(c.column).includes("created"),
-                        ),
-                    ).length
-                  }{" "}
-                  tables
-                </span>
+              <div className="space-y-4">
+                <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-2 text-sm border-b border-black/5 dark:border-white/5 pb-3">
+                  <div className="flex items-center">
+                    <span className="text-neutral-600 dark:text-neutral-300 font-light">
+                      Missing `updated_at`
+                    </span>
+                    <InfoTooltip text="Identifies tables missing the standard 'updated_at' audit column." />
+                  </div>
+                  <span className="text-rose-500 font-medium whitespace-nowrap">
+                    {
+                      tables.filter(
+                        (t: any) =>
+                          !t.column_profiles?.some((c: any) =>
+                            String(c.column).includes("updated"),
+                          ),
+                      ).length
+                    }{" "}
+                    tables
+                  </span>
+                </div>
+                <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-2 text-sm border-b border-black/5 dark:border-white/5 pb-3">
+                  <div className="flex items-center">
+                    <span className="text-neutral-600 dark:text-neutral-300 font-light">
+                      Missing `created_at`
+                    </span>
+                    <InfoTooltip text="Identifies tables missing the standard 'created_at' audit column." />
+                  </div>
+                  <span className="text-rose-500 font-medium whitespace-nowrap">
+                    {
+                      tables.filter(
+                        (t: any) =>
+                          !t.column_profiles?.some((c: any) =>
+                            String(c.column).includes("created"),
+                          ),
+                      ).length
+                    }{" "}
+                    tables
+                  </span>
+                </div>
+                <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-2 text-sm pt-1">
+                  <div className="flex items-center">
+                    <span className="text-neutral-600 dark:text-neutral-300 font-light">
+                      Orphan Tables
+                    </span>
+                    <InfoTooltip text="Tables completely disconnected from the schema; no foreign keys pointing in or out." />
+                  </div>
+                  <span className="text-amber-500 font-medium whitespace-nowrap">
+                    {orphanTableCount} tables
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center justify-between text-sm pb-2">
-                <span className="text-neutral-600 dark:text-neutral-300 font-light">
-                  Orphan Tables (No FKs)
-                </span>
-                <span className="text-amber-500 font-medium">
-                  {orphanTableCount} tables
-                </span>
-              </div>
-            </div>
-          </GlassCard>
+            </GlassCard>
+          </div>
         </div>
       </div>
       <TableNavigatorFAB
@@ -1388,19 +1379,21 @@ function DataView({
               </h2>
 
               {/* Score formula banner */}
-              <div className="mb-6 flex items-center gap-3 px-5 py-3.5 rounded-2xl bg-[#0059B5]/5 dark:bg-[#60A5FA]/5 border border-[#0059B5]/10 dark:border-[#60A5FA]/10">
-                <div className="shrink-0 w-7 h-7 rounded-full bg-[#0059B5]/10 dark:bg-[#60A5FA]/10 flex items-center justify-center border border-[#0059B5]/20 dark:border-[#60A5FA]/20">
-                  <span className="text-[#0059B5] dark:text-[#60A5FA] font-serif font-bold italic text-sm">
-                    f
-                  </span>
+              <div className="mb-6 flex items-center justify-center gap-6 px-4 py-3 rounded-2xl bg-[#0059B5]/5 dark:bg-[#60A5FA]/5 border border-[#0059B5]/10 dark:border-[#60A5FA]/10 w-fit mx-auto">
+                <div className="flex items-center gap-3">
+                  <div className="shrink-0 w-7 h-7 rounded-full bg-[#0059B5]/10 dark:bg-[#60A5FA]/10 flex items-center justify-center border border-[#0059B5]/20 dark:border-[#60A5FA]/20">
+                    <span className="text-[#0059B5] dark:text-[#60A5FA] font-serif font-bold italic text-sm">
+                      f
+                    </span>
+                  </div>
+                  <p className="text-sm text-[#0059B5] dark:text-[#60A5FA] font-mono">
+                    <span className="font-semibold">Health Score</span> =
+                    (Completeness × 0.5) + (Consistency × 0.5) + Temporal Bonus
+                  </p>
                 </div>
-                <p className="text-sm text-[#0059B5] dark:text-[#60A5FA] font-mono">
-                  <span className="font-semibold">Health Score</span> =
-                  (Completeness × 0.5) + (Consistency × 0.5)
-                </p>
-                <span className="ml-auto text-xs text-neutral-400 font-light hidden sm:block">
-                  Hover a score to see per-table breakdown
-                </span>
+                <div className="hidden sm:flex items-center text-[#0059B5] dark:text-[#60A5FA]">
+                  <InfoTooltip text="Hover a score to see per-table formula breakdown" />
+                </div>
               </div>
 
               <div className="grid gap-6">
@@ -1408,7 +1401,7 @@ function DataView({
                   <div
                     key={profile.table}
                     id={`quality-table-${profile.table}`}
-                    className="scroll-mt-44"
+                    className="scroll-mt-44 relative hover:z-50"
                   >
                     <GlassCard className="p-8">
                       <div className="flex justify-between items-start mb-4">
@@ -1430,105 +1423,133 @@ function DataView({
                               </span>
                             </span>
                           </div>
-                          <div className="mt-1.5 text-xs font-mono text-neutral-400 dark:text-neutral-500">
-                            ({profile.completeness_score}% × 0.5) + (
-                            {profile.consistency_score}% × 0.5) ={" "}
-                            <span
-                              className={clsx(
-                                "font-semibold",
-                                (profile.quality_score || 0) > 80
-                                  ? "text-emerald-500"
-                                  : (profile.quality_score || 0) > 60
-                                    ? "text-amber-500"
-                                    : "text-rose-500",
-                              )}
-                            >
-                              {Math.round(profile.quality_score || 0)}%
-                            </span>
-                          </div>
                         </div>
-                        <div
-                          className={clsx(
-                            "text-5xl font-light tabular-nums shrink-0 ml-4",
-                            (profile.quality_score || 0) > 80
-                              ? "text-emerald-500"
-                              : (profile.quality_score || 0) > 60
-                                ? "text-amber-500"
-                                : "text-rose-500",
-                          )}
-                        >
-                          {Math.round(profile.quality_score || 0)}%
+                        <div className="relative group cursor-default">
+                          <div
+                            className={clsx(
+                              "text-5xl font-light tabular-nums shrink-0 ml-4",
+                              (profile.quality_score || 0) > 80
+                                ? "text-emerald-500"
+                                : (profile.quality_score || 0) > 60
+                                  ? "text-amber-500"
+                                  : "text-rose-500",
+                            )}
+                          >
+                            {Math.round(profile.quality_score || 0)}%
+                          </div>
+                          
+                          <div className="absolute right-0 top-full mt-2 w-max opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-[100] bg-white dark:bg-[#111] border border-black/10 dark:border-white/10 shadow-xl rounded-xl p-3 text-xs font-mono text-neutral-600 dark:text-neutral-400 pointer-events-none">
+                            <div className="flex flex-col gap-1.5 min-w-[200px]">
+                              <div className="flex justify-between">
+                                <span>Completeness × 0.5</span>
+                                <span className="text-neutral-900 dark:text-neutral-100">{((profile.completeness_score || 0) * 0.5).toFixed(1)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Consistency × 0.5</span>
+                                <span className="text-neutral-900 dark:text-neutral-100">{((profile.consistency_score || 0) * 0.5).toFixed(1)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Temporal Bonus</span>
+                                <span className="text-neutral-900 dark:text-neutral-100">0.0</span>
+                              </div>
+                              <div className="flex justify-between border-t border-black/10 dark:border-white/10 pt-1.5 mt-0.5 font-semibold text-neutral-900 dark:text-neutral-100">
+                                <span>Final Score</span>
+                                <span>{Math.round(profile.quality_score || 0)}%</span>
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       </div>
 
                       {profile.issues && profile.issues.length > 0 ? (
-                        <div className="bg-rose-500/5 dark:bg-rose-500/10 border border-rose-500/20 rounded-[1.5rem] p-6">
-                          <h4 className="text-rose-700 dark:text-rose-400 font-medium mb-3 flex items-center gap-2">
-                            <ActivitySquare className="w-4 h-4" /> Detected
-                            Issues
+                        <div className="bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-[1.5rem] p-6">
+                          <h4 className="text-neutral-900 dark:text-white font-medium mb-4 flex items-center gap-2">
+                            <ActivitySquare className="w-4 h-4 text-[#0059B5] dark:text-[#60A5FA]" /> Detected Issues
                           </h4>
-                          <ul className="list-disc list-inside space-y-1 text-sm font-light text-rose-900/80 dark:text-rose-200/80 mb-6">
-                            {profile.issues.map((issue: string, i: number) => (
-                              <li key={i}>{issue}</li>
-                            ))}
-                          </ul>
+                          
+                          <div className="-mx-2 overflow-x-auto">
+                            <div className="min-w-[500px]">
+                              <div className="grid grid-cols-12 gap-4 px-4 py-2 border-b border-black/5 dark:border-white/5 text-[10px] uppercase tracking-widest font-semibold text-neutral-500">
+                                <div className="col-span-3">Column</div>
+                                <div className="col-span-7">Detected Issue</div>
+                                <div className="col-span-2 text-right">Impact</div>
+                              </div>
+                              <div className="flex flex-col">
+                                {profile.issues.map((issue: string, i: number) => {
+                                  const parts = issue.split(" ");
+                                  const colNameRaw = parts[0] || "";
+                                  const colName = colNameRaw.includes(".") ? colNameRaw.split(".").pop() || colNameRaw : colNameRaw;
+                                  
+                                  const lastWord = parts.length > 1 ? parts[parts.length - 1] : "";
+                                  const percentMatch = lastWord.match(/\(([\d\.]+%)\)\.?/);
+                                  
+                                  let percent = "-";
+                                  let description = parts.slice(1).join(" ");
+                                  
+                                  if (percentMatch) {
+                                    percent = percentMatch[1] as string;
+                                    description = parts.slice(1, parts.length - 1).join(" ");
+                                  }
+                                  
+                                  if (description.endsWith(".")) description = description.slice(0, -1);
+                                  if (description.endsWith(" in analyzed sample")) description = description.replace(" in analyzed sample", "");
 
-                          {/* Data Trace Injection */}
-                          <h5 className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest mb-3 border-t border-black/5 dark:border-white/5 pt-4">
-                            Data Trace Inspections
-                          </h5>
-                          <div className="flex flex-col gap-5">
-                            <div className="flex flex-col gap-2">
-                              <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400 tracking-wider">
-                                Valid Sample Record
-                              </span>
-                              <div className="bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/20 rounded-xl overflow-x-auto">
-                                {renderRowTable(
-                                  analysisData?.sample_tables?.[
-                                    profile.table
-                                  ]?.[0] || { status: "OK", mock_data: "true" },
-                                  "emerald",
-                                )}
+                                  return (
+                                    <div key={i} className="grid grid-cols-12 gap-4 px-4 py-3 text-sm border-b border-black/5 dark:border-white/5 last:border-0 items-center hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                                      <div className="col-span-3 font-mono text-xs text-[#0059B5] dark:text-[#60A5FA] truncate">
+                                        {colName}
+                                      </div>
+                                      <div className="col-span-7 text-neutral-700 dark:text-neutral-300 font-light truncate decoration-neutral-500/30" title={description}>
+                                        {description}
+                                      </div>
+                                      <div className="col-span-2 text-right font-medium text-rose-600 dark:text-rose-400">
+                                        {percent}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                                </div>
                               </div>
                             </div>
 
-                            <div className="flex flex-col gap-2">
-                              <span className="text-[10px] uppercase font-bold text-rose-600 dark:text-rose-400 tracking-wider">
-                                Violation Trace Snapshots
-                              </span>
-                              <div className="flex flex-col gap-2">
-                                {((
-                                  analysisData?.sample_tables?.[
-                                    profile.table
-                                  ] || []
-                                ).length > 1
-                                  ? (
-                                      analysisData.sample_tables[
-                                        profile.table
-                                      ] as any[]
-                                    ).slice(
-                                      1,
-                                      Math.min(4, profile.issues.length + 1),
-                                    )
-                                  : [
-                                      {
-                                        _error: "MOCKED VIOLATION",
-                                        anomaly: "Missing parameter",
-                                      },
-                                    ]
-                                ).map((row: any, i: number) => (
-                                  <div
-                                    key={i}
-                                    className="bg-rose-500/5 dark:bg-rose-500/10 border border-rose-500/20 rounded-xl overflow-x-auto relative group"
-                                  >
-                                    {renderRowTable(row, "rose")}
-                                  </div>
-                                ))}
+                            {/* Data Trace Injection */}
+                            {analysisData?.sample_tables?.[profile.table] && Array.isArray(analysisData.sample_tables[profile.table]) && analysisData.sample_tables[profile.table].length > 0 && (
+                              <div className="mt-8 border-t border-black/5 dark:border-white/5 pt-6">
+                                <h5 className="text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span> Trace Samples
+                                </h5>
+                                <div className="flex flex-col gap-3">
+                                  {analysisData.sample_tables[profile.table].slice(0, 3).map((row: any, rIdx: number) => {
+                                    if (!row || Object.keys(row).length === 0) return null;
+                                    return (
+                                      <div key={rIdx} className="bg-white/40 dark:bg-black/20 border border-black/5 dark:border-white/5 rounded-xl overflow-x-auto">
+                                        <table className="w-full text-left text-[11px] font-mono whitespace-nowrap">
+                                          <thead>
+                                            <tr className="border-b border-black/5 dark:border-white/5 bg-black/[0.02] dark:bg-white/[0.02]">
+                                              {Object.keys(row).map(k => (
+                                                <th key={k} className="px-3 py-2 font-medium text-neutral-500">{k}</th>
+                                              ))}
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            <tr className="divide-x divide-black/5 dark:divide-white/5">
+                                              {Object.values(row).map((v, i) => (
+                                                <td key={i} className="px-3 py-2 text-neutral-700 dark:text-neutral-300">
+                                                  {String(v)}
+                                                </td>
+                                              ))}
+                                            </tr>
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
                               </div>
-                            </div>
+                            )}
+
                           </div>
-                        </div>
-                      ) : (
+                        ) : (
                         <div className="text-emerald-600 dark:text-emerald-400 font-light flex items-center gap-2">
                           <ShieldCheck className="w-5 h-5" /> No issues detected
                         </div>
