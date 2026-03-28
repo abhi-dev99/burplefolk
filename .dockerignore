@@ -1,0 +1,16 @@
+.git
+.gitignore
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+.pytest_cache
+.mypy_cache
+.streamlit
+outputs
+nexus-ui/node_modules
+nexus-ui/dist
+testing
+*.log

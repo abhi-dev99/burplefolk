@@ -2874,8 +2874,11 @@ export default function App() {
       setIngestionState("done");
     } catch (e) {
       console.error(e);
+      const message = axios.isAxiosError(e)
+        ? (e.response?.data?.detail || e.message || "Unknown API error")
+        : "Unknown API error";
       alert(
-        "Failed to analyze. Ensure backend API is running at localhost:8000!",
+        `Failed to analyze. Ensure backend API is running. Backend target: ${API_BASE}\nError: ${message}`,
       );
       setIngestionState("idle");
     }
