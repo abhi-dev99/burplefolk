@@ -129,6 +129,22 @@ def profile_table(
         completeness_values.append(1 - (null_ratio / 100.0))
         consistency_values.append(type_consistency)
 
+        histogram_data = []
+        if pd.api.types.is_numeric_dtype(series):
+            clean_series = series.dropna()
+            if not clean_series.empty:
+                try:
+                    # 12-bin histogram
+                    counts, bin_edges = np.histogram(clean_series, bins=12)
+                    for i in range(len(counts)):
+                        histogram_data.append({
+                            "min Bound": float(bin_edges[i]),
+                            "max Bound": float(bin_edges[i+1]),
+                            "count": int(counts[i])
+                        })
+                except Exception:
+                    pass
+
         col_profiles.append(
             {
                 "table": table_name,
@@ -161,6 +177,7 @@ def profile_table(
                     round(temporal_adjustment_points, 2) if temporal_adjustment_points is not None else None
                 ),
                 "sample_values": ", ".join(series.dropna().astype(str).head(3).tolist()),
+                "histogram": histogram_data,
             }
         )
 
